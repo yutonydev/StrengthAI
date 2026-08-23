@@ -15,7 +15,20 @@
  * cannot be edited by the client.
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { json, preflight, userIdFrom } from '../_shared/http.ts';
 import { capFromEnv, checkCap, monthStartKey } from '../_shared/usage.ts';
+// The vocabulary and the cache-key normalization, shared verbatim with the browser —
+// see _shared/vocab.ts for why a second copy here was a liability rather than a
+// convenience. `norm` below stays local: it is a looser cleanup for model output, not
+// the cache key, and the two must not be conflated.
+import {
+  BODY_PARTS,
+  JOINT_ACTIONS,
+  MUSCLES,
+  normalizePhrase,
+  VOCAB_BASES,
+  VOCAB_MODS,
+} from '../_shared/vocab.ts';
 
 // Pinned to a version alias, never `-latest`.
 //
@@ -34,69 +47,8 @@ const MODEL = Deno.env.get('RESOLVER_MODEL') ?? 'claude-haiku-4-5';
 // and disable the cap entirely, silently.
 const MONTHLY_CALL_CAP = capFromEnv(Deno.env.get('RESOLVER_MONTHLY_CAP'), 400, 'RESOLVER_MONTHLY_CAP');
 
-const BODY_PARTS = ['chest', 'back', 'shoulders', 'arms', 'legs', 'core'];
-
-const JOINT_ACTIONS = [
-  'shoulder flexion', 'shoulder extension', 'shoulder abduction', 'shoulder adduction',
-  'shoulder horizontal adduction', 'shoulder horizontal abduction',
-  'shoulder internal rotation', 'shoulder external rotation',
-  'scapular retraction', 'scapular protraction', 'scapular elevation', 'scapular depression',
-  'elbow flexion', 'elbow extension', 'wrist flexion', 'wrist extension',
-  'hip extension', 'hip flexion', 'hip abduction', 'hip adduction',
-  'knee extension', 'knee flexion',
-  'plantarflexion', 'dorsiflexion',
-  'spinal flexion', 'spinal extension', 'spinal rotation', 'lateral flexion',
-  'anti-extension', 'anti-rotation', 'anti-lateral-flexion',
-];
-
-const MUSCLES = [
-  'pectorals', 'upper chest',
-  'lats', 'upper back', 'traps', 'lower back',
-  'front delts', 'side delts', 'rear delts',
-  'biceps', 'triceps', 'brachialis', 'forearms',
-  'quads', 'hamstrings', 'glutes', 'calves', 'adductors', 'abductors',
-  'abs', 'obliques',
-];
-
-const VOCAB_BASES = [
-  'bench press', 'incline press', 'decline press', 'chest press', 'chest fly', 'push-up', 'dip',
-  'overhead press', 'push press', 'arnold press', 'lateral raise', 'front raise',
-  'upright row', 'rear delt fly', 'face pull',
-  'lat pulldown', 'straight-arm pulldown', 'pull-up', 'row', 'pullover', 'shrug',
-  'back extension', 'good morning',
-  'curl', 'reverse curl', 'preacher curl', 'wrist curl', 'tricep extension', 'pushdown',
-  'tricep kickback', 'skull crusher', 'jm press',
-  'squat', 'leg press', 'hack squat', 'leg extension', 'romanian deadlift', 'stiff leg deadlift',
-  'deadlift',
-  'rack pull', 'hamstring curl', 'nordic curl', 'hip thrust', 'glute kickback',
-  'hip abduction', 'hip adduction', 'lunge', 'split squat', 'step-up', 'calf raise',
-  'crunch', 'leg raise', 'ab wheel', 'plank', 'pallof press', 'woodchop',
-  'clean', 'snatch', 'thruster', 'farmer carry', 'sled push', 'kettlebell swing',
-];
-
-const VOCAB_MODS: Record<string, string[]> = {
-  implement: ['barbell', 'dumbbell', 'cable', 'machine', 'smith machine', 'kettlebell',
-    'plate loaded', 'bodyweight', 'band', 'landmine', 'trap bar', 'ez bar', 'safety bar'],
-  attachment: ['rope', 'straight bar', 'v-bar', 'single handle', 'cuff', 'wide bar',
-    'lat bar', 'stirrup'],
-  grip: ['narrow grip', 'wide grip', 'neutral grip', 'supinated', 'pronated', 'mixed grip',
-    'false grip', 'hook grip'],
-  stance: ['feet up', 'heel elevated', 'toes elevated', 'sumo', 'conventional', 'staggered',
-    'wide stance', 'narrow stance', 'b stance'],
-  angle: ['seated', 'standing', 'lying', 'prone', 'incline', 'decline', 'chest supported',
-    'bent over', 'kneeling', 'high to low', 'low to high', 'behind the neck', 'front rack',
-    'zercher', 'overhead'],
-  tempo: ['paused', 'slow eccentric', 'explosive', 'cluster', '1.5 rep'],
-  rom: ['deficit', 'partial', 'lengthened partial', 'pin', 'block', 'floor', 'full rom'],
-  load: ['banded', 'chains', 'accommodating resistance'],
-  side: ['single arm', 'single leg', 'alternating'],
-};
-
 const norm = (s: unknown) =>
   String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
-
-const normalizePhrase = (s: unknown) =>
-  String(s ?? '').toLowerCase().replace(/[^a-z0-9\s+-]/g, ' ').replace(/\s+/g, ' ').trim();
 
 function buildPrompt(registry: Array<{ base: string; mods: string[] }>) {
   const modLines = Object.entries(VOCAB_MODS)
@@ -219,8 +171,7 @@ ${known}`;
 async function handleBackfill(
   body: Record<string, unknown>,
   authHeader: string,
-  serviceKey: string,
-  json: (b: unknown, s?: number) => Response
+  serviceKey: string
 ): Promise<Response> {
   const bearer = authHeader.replace(/^Bearer\s+/i, '');
   if (!serviceKey || bearer !== serviceKey) {
@@ -290,17 +241,8 @@ One entry per input number, in order. No prose.`,
 }
 
 Deno.serve(async (req) => {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  };
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
-
-  const json = (body: unknown, status = 200) =>
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { ...cors, 'Content-Type': 'application/json' },
-    });
+  const pre = preflight(req);
+  if (pre) return pre;
 
   try {
     const authHeader = req.headers.get('Authorization') ?? '';
@@ -310,17 +252,10 @@ Deno.serve(async (req) => {
     // Backfill is checked BEFORE user auth: it authenticates with the service-role key
     // rather than a user JWT, so the ordinary "not signed in" gate would reject it.
     if (body.mode === 'backfill') {
-      return await handleBackfill(body, authHeader, serviceKey, json);
+      return await handleBackfill(body, authHeader, serviceKey);
     }
 
-    const anon = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: userData } = await anon.auth.getUser();
-    const userId = userData?.user?.id;
+    const userId = await userIdFrom(authHeader);
     if (!userId) return json({ error: 'Not signed in' }, 401);
 
 

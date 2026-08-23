@@ -1,5 +1,7 @@
+import { Suspense } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { BottomNav } from './BottomNav'
+import { ScreenLoading } from './ScreenState'
 
 /**
  * The faded screen surface. `key={pathname}` remounts it on every navigation, which is
@@ -15,7 +17,12 @@ function FadedScreen() {
 
   return (
     <div key={pathname} className="screen-fade">
-      <Outlet />
+      {/* Routes are lazy (see App.jsx), so a first visit to a screen has a chunk to fetch.
+          The fallback is the same placeholder a screen shows while its data loads, so the
+          two phases read as one wait rather than two different ones. */}
+      <Suspense fallback={<ScreenLoading />}>
+        <Outlet />
+      </Suspense>
     </div>
   )
 }

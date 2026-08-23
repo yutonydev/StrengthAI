@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { ArrowLeft, Check, Sparkles, Trash2 } from 'lucide-react'
@@ -18,8 +18,11 @@ import { AddExerciseSheet } from '@/components/workout/AddExerciseSheet'
 import { SetLoggerSheet } from '@/components/workout/SetLoggerSheet'
 import { RestTimer } from '@/components/workout/RestTimer'
 import { ReadinessSheet } from '@/components/workout/ReadinessSheet'
+import { useVariantMap } from '@/hooks/useVariantMap'
+import { useExerciseOrder } from '@/hooks/useExerciseOrder'
+import { REST_KEY } from '@/lib/localState'
+import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
 
-const REST_KEY = 'strengthai.rest'
 const REST_SECONDS = 150
 
 export default function Workout() {
@@ -111,11 +114,19 @@ export default function Workout() {
     }
   }, [sessionId])
 
-  const variantById = useMemo(() => {
-    const map = new Map()
-    variantList.forEach((v) => map.set(v.id, v))
-    return map
-  }, [variantList])
+  const variantById = useVariantMap(variantList)
+
+  const persistOrder = useCallback(
+    (order) => sessions.update(sessionId, { exercise_order: order }),
+    [sessionId]
+  )
+  const { addExercise: handleAddExercise, reorder } = useExerciseOrder({
+    row: session,
+    setRow: setSession,
+    persistOrder,
+    setVariants: setVariantList,
+    onError: setError,
+  })
 
   const planByVariant = useMemo(() => {
     const map = new Map()
@@ -172,22 +183,6 @@ export default function Workout() {
     }
   }
 
-  const reorder = async (index, direction) => {
-    const prevOrder = session.exercise_order || []
-    const newIndex = index + direction
-    if (newIndex < 0 || newIndex >= prevOrder.length) return
-    const order = [...prevOrder]
-    ;[order[index], order[newIndex]] = [order[newIndex], order[index]]
-
-    setSession((s) => ({ ...s, exercise_order: order }))
-    try {
-      await sessions.update(sessionId, { exercise_order: order })
-    } catch (err) {
-      setSession((s) => ({ ...s, exercise_order: prevOrder }))
-      setError(err.message)
-    }
-  }
-
   const removeExercise = async (vid) => {
     const prevOrder = session.exercise_order || []
     const prevSets = sessionSets
@@ -214,47 +209,6 @@ export default function Workout() {
     } catch (err) {
       setSessionSets(prevSets)
       setError(err.message)
-    }
-  }
-
-  const handleAddExercise = async ({
-    variantId,
-    base,
-    mods,
-    muscle,
-    muscles,
-    jointActions,
-    bodyPart,
-    sourceText,
-    resolvedBy,
-    loadNote,
-    confidence,
-  }) => {
-    let vid = variantId
-    if (!vid) {
-      const created = await variantsApi.ensure({
-        base,
-        mods,
-        muscle,
-        muscles,
-        joint_actions: jointActions,
-        body_part: bodyPart,
-        source_text: sourceText,
-        resolved_by: resolvedBy,
-        load_note: loadNote,
-        confidence,
-      })
-      vid = created.id
-      setVariantList((list) => (list.some((v) => v.id === created.id) ? list : [...list, created]))
-    }
-    await variantsApi.bumpUse(vid)
-    setVariantList((list) => list.map((v) => (v.id === vid ? { ...v, uses: (v.uses || 0) + 1 } : v)))
-
-    const prevOrder = session.exercise_order || []
-    if (!prevOrder.includes(vid)) {
-      const newOrder = [...prevOrder, vid]
-      setSession((s) => ({ ...s, exercise_order: newOrder }))
-      await sessions.update(sessionId, { exercise_order: newOrder })
     }
   }
 
@@ -368,11 +322,7 @@ export default function Workout() {
   }
 
   if (loading) {
-    return (
-      <div className="flex min-h-full items-center justify-center bg-background text-muted-foreground">
-        Loading…
-      </div>
-    )
+    return <ScreenLoading />
   }
 
   return (
@@ -402,11 +352,7 @@ export default function Workout() {
       </div>
 
       <div className="flex flex-col gap-3 px-[18px] pt-[14px] pb-[76px]">
-        {error && (
-          <div className="rounded-[14px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
-            {error}
-          </div>
-        )}
+        <ErrorBanner error={error} />
 
         <input
           value={name}

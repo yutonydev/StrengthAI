@@ -66,12 +66,19 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
 
   const weightPh = plan ? display(plan.target_load_kg, unit) : best ? display(best.weight_kg, unit) : 0
   const stepAmt = step(unit)
+  // `rir` is nullable in the schema, so the clause is appended only when there is one to
+  // show. Interpolating it unconditionally rendered the literal text "@ RIR null" for any
+  // set logged without one — the same data ExerciseBlock correctly renders as an em dash.
   const logRef = historyLoading
     ? 'Loading history…'
     : last
-      ? `last ${display(last.weight_kg, unit)} ${unit} × ${last.reps} @ RIR ${last.rir}`
+      ? `last ${display(last.weight_kg, unit)} ${unit} × ${last.reps}${last.rir != null ? ` @ RIR ${last.rir}` : ''}`
       : 'first time logging this'
-  const logPlan = plan ? `Coach plan: ${Math.round(weightPh)} ${unit} at RIR 3 — pre-filled below.` : null
+  // "shown below", not "pre-filled": the plan seeds the PLACEHOLDER only. Saying pre-filled
+  // promised the opposite of the guarantee this sheet exists to keep — that nothing is ever
+  // entered on the lifter's behalf — and would have read as a bug the first time someone
+  // tapped save on what looked like a filled field and got told a weight was missing.
+  const logPlan = plan ? `Coach plan: ${Math.round(weightPh)} ${unit} at RIR 3 — shown below.` : null
 
   const repsPh = best ? best.reps : 0
   const touchReps = () => setTouched((t) => ({ ...t, reps: true }))
@@ -100,7 +107,10 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
 
   const rirSel = rir === '' ? null : parseFloat(rir)
   const rirRow = RIR_SCALE.find((r) => r.rir === rirSel)
-  const rirHint = last ? `Last time you logged RIR ${last.rir}` : 'How many more reps could you have done?'
+  const rirHint =
+    last?.rir != null
+      ? `Last time you logged RIR ${last.rir}`
+      : 'How many more reps could you have done?'
 
   // Everything saved below is entered, never inferred. `best` and `plan` seed the PLACEHOLDER
   // so the lifter can see what they did last time; they never become the saved value. The old

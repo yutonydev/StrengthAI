@@ -23,152 +23,24 @@
  * prompt or the vocabulary — never add a hand-written override.
  */
 
-/**
- * Canonical movement names. The model is told to reuse one of these when it fits and to
- * invent a new name only when nothing does. This is a convergence aid, NOT a whitelist —
- * a movement missing from this list still resolves fine.
- */
-export const VOCAB_BASES = [
-  // chest
-  'bench press', 'incline press', 'decline press', 'chest press', 'chest fly', 'push-up', 'dip',
-  // shoulders
-  'overhead press', 'push press', 'arnold press', 'lateral raise', 'front raise',
-  'upright row', 'rear delt fly', 'face pull',
-  // back
-  'lat pulldown', 'straight-arm pulldown', 'pull-up', 'row', 'pullover', 'shrug',
-  'back extension', 'good morning',
-  // arms
-  'curl', 'reverse curl', 'preacher curl', 'wrist curl', 'tricep extension', 'pushdown',
-  'tricep kickback', 'skull crusher', 'jm press',
-  // legs
-  'squat', 'leg press', 'hack squat', 'leg extension', 'romanian deadlift', 'stiff leg deadlift',
-  'deadlift',
-  'rack pull', 'hamstring curl', 'nordic curl', 'hip thrust', 'glute kickback',
-  'hip abduction', 'hip adduction', 'lunge', 'split squat', 'step-up', 'calf raise',
-  // core
-  'crunch', 'leg raise', 'ab wheel', 'plank', 'pallof press', 'woodchop', 'back extension',
-  // full body
-  'clean', 'snatch', 'thruster', 'farmer carry', 'sled push', 'kettlebell swing',
-];
-
-/**
- * Canonical modifier strings, grouped by the dimension they vary. Grouping matters: the
- * model is told a variant may carry at most one modifier per group, which stops it
- * returning both "seated" and "standing", or both "rope" and "straight bar".
- */
-export const VOCAB_MODS = {
-  implement: ['barbell', 'dumbbell', 'cable', 'machine', 'smith machine', 'kettlebell',
-    'plate loaded', 'bodyweight', 'band', 'landmine', 'trap bar', 'ez bar', 'safety bar'],
-  attachment: ['rope', 'straight bar', 'v-bar', 'single handle', 'cuff', 'wide bar',
-    'lat bar', 'stirrup'],
-  grip: ['narrow grip', 'wide grip', 'neutral grip', 'supinated', 'pronated', 'mixed grip',
-    'false grip', 'hook grip'],
-  stance: ['feet up', 'heel elevated', 'toes elevated', 'sumo', 'conventional', 'staggered',
-    'wide stance', 'narrow stance', 'b stance'],
-  angle: ['seated', 'standing', 'lying', 'prone', 'incline', 'decline', 'chest supported',
-    'bent over', 'kneeling', 'high to low', 'low to high', 'behind the neck', 'front rack',
-    'zercher', 'overhead'],
-  tempo: ['paused', 'slow eccentric', 'explosive', 'cluster', '1.5 rep'],
-  rom: ['deficit', 'partial', 'lengthened partial', 'pin', 'block', 'floor', 'full rom'],
-  load: ['banded', 'chains', 'accommodating resistance'],
-  side: ['single arm', 'single leg', 'alternating'],
-};
-
-/** Flat list, for prompt construction and validation. */
-export const ALL_MODS = Object.values(VOCAB_MODS).flat();
-
-/**
- * Canonical muscle names. This is the vocabulary that makes cross-movement fatigue
- * detection possible — if the model calls it "tricep" one week and "triceps brachii" the
- * next, weekly volume per muscle becomes meaningless.
- */
-export const MUSCLES = [
-  'pectorals', 'upper chest',
-  'lats', 'upper back', 'traps', 'lower back',
-  'front delts', 'side delts', 'rear delts',
-  'biceps', 'triceps', 'brachialis', 'forearms',
-  'quads', 'hamstrings', 'glutes', 'calves', 'adductors', 'abductors',
-  'abs', 'obliques',
-];
-
-/**
- * Broad grouping, for weekly training goals.
+/*
+ * The vocabulary itself lives in supabase/functions/_shared/vocab.ts and is re-exported
+ * here, so every existing `from '@/lib/resolver'` import keeps working.
  *
- * Widened from the original chest/back/arms/legs. Shoulders were being filed under arms and
- * core had nowhere to go at all, which made per-muscle volume dishonest the moment anyone
- * trained delts directly.
+ * It is not defined in this file because the Deno edge function needs the identical lists
+ * and can only import from inside supabase/functions/. Two hand-kept copies is what this
+ * replaces; they had already drifted. See that file's header for the full reasoning.
  */
-export const BODY_PARTS = ['chest', 'back', 'shoulders', 'arms', 'legs', 'core'];
+import { normalizePhrase } from '../../supabase/functions/_shared/vocab.ts';
 
-/**
- * Joint actions. The third axis after muscle and modifier.
- *
- * Anatomical, not gym vernacular: "vertical push" is a trainer's category, whereas a
- * machine shoulder press is shoulder abduction plus elbow extension. The joint action is
- * what is objectively true about the movement, and it is what accumulates — elbow extension
- * fatigue builds across bench, dips and pushdowns regardless of what those lifts are called.
- *
- * A lift has as many actions as it has working joints, so this is an ARRAY per variant.
- * Isometric trunk demands (anti-extension on a plank) count; passive stabilising does not.
- */
-export const JOINT_ACTIONS = [
-  // glenohumeral
-  'shoulder flexion', 'shoulder extension', 'shoulder abduction', 'shoulder adduction',
-  'shoulder horizontal adduction', 'shoulder horizontal abduction',
-  'shoulder internal rotation', 'shoulder external rotation',
-  // scapular
-  'scapular retraction', 'scapular protraction', 'scapular elevation', 'scapular depression',
-  // elbow / wrist
-  'elbow flexion', 'elbow extension', 'wrist flexion', 'wrist extension',
-  // hip / knee / ankle
-  'hip extension', 'hip flexion', 'hip abduction', 'hip adduction',
-  'knee extension', 'knee flexion',
-  'plantarflexion', 'dorsiflexion',
-  // trunk
-  'spinal flexion', 'spinal extension', 'spinal rotation', 'lateral flexion',
-  'anti-extension', 'anti-rotation', 'anti-lateral-flexion',
-];
-
-/**
- * Antagonist pairs, for balance checks. A week of shoulder horizontal adduction with no
- * horizontal abduction is a finding even when chest and back volume both look reasonable,
- * because the imbalance is at the joint rather than in the muscle totals.
- */
-export const ACTION_ANTAGONIST = {
-  'shoulder flexion': 'shoulder extension',
-  'shoulder extension': 'shoulder flexion',
-  'shoulder abduction': 'shoulder adduction',
-  'shoulder adduction': 'shoulder abduction',
-  'shoulder horizontal adduction': 'shoulder horizontal abduction',
-  'shoulder horizontal abduction': 'shoulder horizontal adduction',
-  'shoulder internal rotation': 'shoulder external rotation',
-  'shoulder external rotation': 'shoulder internal rotation',
-  'scapular retraction': 'scapular protraction',
-  'scapular protraction': 'scapular retraction',
-  'scapular elevation': 'scapular depression',
-  'scapular depression': 'scapular elevation',
-  'elbow flexion': 'elbow extension',
-  'elbow extension': 'elbow flexion',
-  'hip extension': 'hip flexion',
-  'hip flexion': 'hip extension',
-  'hip abduction': 'hip adduction',
-  'hip adduction': 'hip abduction',
-  'knee extension': 'knee flexion',
-  'knee flexion': 'knee extension',
-  'spinal flexion': 'spinal extension',
-  'spinal extension': 'spinal flexion',
-};
-
-/** Which body part a muscle rolls up into. */
-export const MUSCLE_TO_PART = {
-  pectorals: 'chest', 'upper chest': 'chest',
-  lats: 'back', 'upper back': 'back', traps: 'back', 'lower back': 'back',
-  'front delts': 'shoulders', 'side delts': 'shoulders', 'rear delts': 'shoulders',
-  biceps: 'arms', triceps: 'arms', brachialis: 'arms', forearms: 'arms',
-  quads: 'legs', hamstrings: 'legs', glutes: 'legs', calves: 'legs',
-  adductors: 'legs', abductors: 'legs',
-  abs: 'core', obliques: 'core',
-};
+export {
+  VOCAB_BASES,
+  VOCAB_MODS,
+  MUSCLES,
+  BODY_PARTS,
+  JOINT_ACTIONS,
+  normalizePhrase,
+} from '../../supabase/functions/_shared/vocab.ts';
 
 /**
  * Set-counting weight per role. A secondary muscle takes real but partial stimulus, and
@@ -177,15 +49,6 @@ export const MUSCLE_TO_PART = {
  * "you have done 14 sets of chest this week".
  */
 export const ROLE_WEIGHT = { primary: 1, secondary: 0.5 };
-
-/** Lowercase, collapse whitespace, strip punctuation. The cache key. */
-export function normalizePhrase(text) {
-  return String(text || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s+-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 /**
  * Looser key, for comparing two phrases to each other — NOT for the cache.

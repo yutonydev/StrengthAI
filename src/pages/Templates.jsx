@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Dumbbell, Play, Plus, Trash2 } from 'lucide-react'
@@ -6,6 +6,9 @@ import { sessions, templates as templatesApi, variants as variantsApi } from '@/
 import { canonicalLabel } from '@/lib/resolver'
 import { useQuery } from '@/hooks/useQuery'
 import { qk } from '@/api/queryCache'
+import { useVariantMap } from '@/hooks/useVariantMap'
+import { startFromTemplate } from '@/hooks/useExerciseOrder'
+import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
 
 // Stable identity for the not-yet-loaded case, so `?? EMPTY` doesn't hand the memos
 // below a brand-new array on every render.
@@ -30,11 +33,7 @@ export default function Templates() {
   // confirms before destroying a session; this is the same class of action.
   const [pendingDelete, setPendingDelete] = useState(null)
 
-  const variantById = useMemo(() => {
-    const map = new Map()
-    variantList.forEach((v) => map.set(v.id, v))
-    return map
-  }, [variantList])
+  const variantById = useVariantMap(variantList)
 
   const handleNew = async () => {
     try {
@@ -60,39 +59,19 @@ export default function Templates() {
   }
 
   const handleStart = async (template) => {
-    if (active) {
-      navigate(`/workout/${active.id}`)
-      return
-    }
     setStarting(template.id)
-    try {
-      const created = await sessions.start({
-        name: template.name,
-        template_id: template.id,
-        exercise_order: template.exercise_order || [],
-      })
-      navigate(`/workout/${created.id}`)
-    } catch (err) {
-      setError(err.message)
-      setStarting(null)
-    }
+    const id = await startFromTemplate(template, active, setError)
+    if (id) navigate(`/workout/${id}`)
+    else setStarting(null)
   }
 
   if (loading) {
-    return (
-      <div className="flex min-h-full items-center justify-center bg-background text-muted-foreground">
-        Loading…
-      </div>
-    )
+    return <ScreenLoading />
   }
 
   return (
     <div className="min-h-full bg-background px-[18px] pt-[14px] pb-[76px] text-foreground">
-      {error && (
-        <div className="mb-3 rounded-[14px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
-          {error}
-        </div>
-      )}
+      <ErrorBanner error={error} className="mb-3" />
 
       <div className="mb-[18px] flex items-start justify-between">
         <div>

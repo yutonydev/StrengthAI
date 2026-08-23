@@ -12,16 +12,10 @@ import {
 } from '@/api/db'
 import { display } from '@/lib/units'
 import { weekRange, sessionVolumeKg } from '@/lib/coach'
-import { BODY_PARTS } from '@/lib/resolver'
+import { PART_LABELS, PART_ORDER } from '@/lib/bodyParts'
 import logo from '@/assets/logo.png'
-
-// Derived from the resolver's vocabulary rather than listed again here, so a variant can
-// never come back tagged with a body part the goals UI has no row for. Migration 004 added
-// shoulders and core — delts used to be filed under arms, and core had nowhere to go.
-export const PART_ORDER = BODY_PARTS
-export const PART_LABELS = Object.fromEntries(
-  PART_ORDER.map((p) => [p, p.charAt(0).toUpperCase() + p.slice(1)])
-)
+import { useVariantMap } from '@/hooks/useVariantMap'
+import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
 
 const ymd = (d) => {
   const dt = new Date(d)
@@ -66,11 +60,7 @@ export default function Home() {
   const [cursor, setCursor] = useState(null)
   const [openDay, setOpenDay] = useState(null)
 
-  const variantById = useMemo(() => {
-    const map = new Map()
-    variantList.forEach((v) => map.set(v.id, v))
-    return map
-  }, [variantList])
+  const variantById = useVariantMap(variantList)
 
   const handleStart = async () => {
     if (active) {
@@ -176,20 +166,12 @@ export default function Home() {
   const startSub = active ? active.name || 'Session in progress' : 'Describe it, log it, done'
 
   if (loading) {
-    return (
-      <div className="flex min-h-full items-center justify-center bg-background text-muted-foreground">
-        Loading…
-      </div>
-    )
+    return <ScreenLoading />
   }
 
   return (
     <div className="min-h-full bg-background px-[18px] pt-[14px] pb-[76px] text-foreground">
-      {error && (
-        <div className="mb-3 rounded-[14px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
-          {error}
-        </div>
-      )}
+      <ErrorBanner error={error} className="mb-3" />
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-[11px]">

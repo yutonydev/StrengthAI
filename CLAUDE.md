@@ -15,16 +15,21 @@ accurate description of what exists.
 ```bash
 npm install
 npm run dev     # http://localhost:5173
-npm test        # vitest — 87 tests, no database or network needed
+npm test        # vitest — 112 tests, no database or network needed
 npm run lint    # oxlint; currently warnings-only, no errors
 npm run build
 ```
 
 Single test file: `npx vitest run src/lib/resolver.test.js`.
 
-Tests live in `src/lib/{resolver,coach,suggestNext}.test.js` and
-`supabase/functions/_shared/usage.test.ts`. All are plain function tests — no DB, no
-mocks, no setup. They should pass before any UI work is considered done.
+Tests live in `src/lib/{resolver,coach,suggestNext}.test.js`,
+`supabase/functions/_shared/usage.test.ts`, and `src/pages/pages.smoke.test.js`. All are
+plain function tests — no DB, no mocks, no setup. They should pass before any UI work is
+considered done.
+
+The smoke test only imports every page and shared module and checks it exports a component.
+It renders nothing. It exists because the routes are lazy (`App.jsx`), so a broken import no
+longer fails the build — it fails at navigation, on whichever screen the lifter opens.
 
 `.env.local` needs `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 
@@ -52,20 +57,32 @@ wifi for days.
 tested without a database or a UI:
 
 ```
-src/lib/resolver.js       vocabulary, normalization, junk filter, local match
+src/lib/resolver.js       normalization, junk filter, local match; re-exports the vocabulary
 src/lib/coach.js          matched-RIR series, plateau + program detection, goal projection,
                           per-muscle volume, the facts payload for the chat coach
-src/lib/units.js          kg/lb, RIR/RPE, readiness score
+src/lib/units.js          kg/lb, RIR → RPE, readiness score
 src/lib/suggestNext.js    "up next" ranking: template order, then co-occurrence, then recency
+src/lib/bodyParts.js      body-part order + labels for the weekly-goals UI
+src/lib/localState.js     the localStorage keys, and the one place that clears them
 
 src/api/db.js               the ONLY file that touches Supabase
+src/api/queryCache.js       stale-while-revalidate cache; db.js writes invalidate their keys
 src/api/resolveExercise.js  the three resolution gates
 src/api/coachChat.js        builds the facts payload, calls the chat function
 
-supabase/schema.sql       tables, indexes, RLS policies
-supabase/functions/       resolve-exercise, coach-chat, _shared/usage.ts (cap logic)
-prototype/                the original high-fidelity UI reference
+src/hooks/                  useQuery, useVariantMap, useExerciseOrder, useHoldRepeat
+src/components/ScreenState.jsx  ScreenLoading + ErrorBanner, used by every screen
+
+supabase/schema.sql            tables, indexes, RLS policies
+supabase/functions/            resolve-exercise, coach-chat
+supabase/functions/_shared/    vocab.ts, usage.ts (cap logic), http.ts (CORS/JSON/user gate)
+public/sw.js                   offline shell; registered from main.jsx in production only
+prototype/                     the original high-fidelity UI reference
 ```
+
+**Routes are lazy.** `App.jsx` eagerly imports Home and Login only; every other screen is a
+`React.lazy` chunk with its Suspense boundary in `AppLayout`. Keep new screens lazy, and add
+them to the smoke test.
 
 Screens in `src/pages`: Home, Workout, Progress, CoachChat, Coach (insights), Templates,
 TemplateEditor, SessionDetail, Settings, and the four auth pages.
@@ -94,8 +111,13 @@ This is stated in the prompt and enforced again server-side; any unaccounted-for
 word is appended as a tag, so a forgotten term degrades to an ugly label rather than bad
 data.
 
-`VOCAB_BASES` / `VOCAB_MODS` / `MUSCLES` / `JOINT_ACTIONS` are vocabularies given to the
-model, not a matching dictionary. `isPlausibleExercise` is deliberately permissive — it
+`VOCAB_BASES` / `VOCAB_MODS` / `MUSCLES` / `JOINT_ACTIONS` / `BODY_PARTS` are vocabularies
+given to the model, not a matching dictionary. **They live in
+`supabase/functions/_shared/vocab.ts`**, which is the only directory both the browser and the
+Deno edge function can import from — the function is the side that actually shows them to the
+model, so a second copy on the client is a silently forking trend line waiting to happen.
+`resolver.js` re-exports them, so `from '@/lib/resolver'` still works. Edit the shared file,
+never a copy. `isPlausibleExercise` is deliberately permissive — it
 rejects only what *cannot* be an exercise (keyboard mashing, repeated characters). Note
 there is intentionally no "must contain a vowel" rule: SLDL, RDL, OHP and BSS are all
 vowel-free.

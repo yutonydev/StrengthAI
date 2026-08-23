@@ -123,7 +123,6 @@ export const qk = {
   sets: 'sets',
   readiness: 'readiness',
   templates: 'templates',
-  goals: 'goals',
   muscleGoals: 'muscleGoals',
   excludedFlags: 'flags:excluded',
 }

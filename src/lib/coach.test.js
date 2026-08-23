@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   matchedRirSeries, detectPlateau, detectProgramPattern,
   projectGoal, e1rm, muscleVolume, readinessTrend, buildCoachFacts,
+  currentE1rm, BACKOFF_FACTOR,
 } from './coach.js';
 
 const set = (session_id, weight_kg, reps, rir) => ({ session_id, weight_kg, reps, rir });
@@ -497,5 +498,73 @@ describe('buildCoachFacts', () => {
     expect(f.readiness.trend).toBeNull();
     expect(f.program.detected).toBe(false);
     expect(f.muscles.rows).toEqual([]);
+  });
+});
+
+
+describe('currentE1rm', () => {
+  const at = (weight_kg, reps, day) => ({
+    weight_kg,
+    reps,
+    logged_at: new Date(2026, 0, day).toISOString(),
+  });
+
+  it('is 0 with no history rather than -Infinity', () => {
+    // Math.max() of an empty list is -Infinity, which would render as a progress bar of
+    // negative width and a projection from a load below zero.
+    expect(currentE1rm([])).toBe(0);
+    expect(currentE1rm()).toBe(0);
+  });
+
+  it('takes the best of the window, not the latest set', () => {
+    // A back-off set is the newest row and the weakest. Reading "now" as the last set would
+    // report someone as having gone backwards on the day they hit a PR.
+    const sets = [at(100, 5, 1), at(120, 5, 2), at(60, 12, 3)];
+    expect(currentE1rm(sets)).toBeCloseTo(e1rm(120, 5), 6);
+  });
+
+  it('sorts before windowing, so input order cannot change the answer', () => {
+    const chrono = [at(100, 5, 1), at(110, 5, 2), at(105, 5, 3)];
+    const shuffled = [chrono[2], chrono[0], chrono[1]];
+    expect(currentE1rm(shuffled)).toBe(currentE1rm(chrono));
+  });
+
+  it('ignores sets older than the window', () => {
+    // An all-time PR from twenty sessions ago is not where the lifter is now — that is the
+    // whole reason this looks at a window rather than the whole history.
+    const old = at(300, 5, 1);
+    const recent = Array.from({ length: 9 }, (_, i) => at(100, 5, i + 2));
+    expect(currentE1rm([old, ...recent])).toBeCloseTo(e1rm(100, 5), 6);
+  });
+
+  it('does not mutate the array it is given', () => {
+    const sets = [at(110, 5, 3), at(100, 5, 1)];
+    const before = sets.map((s) => s.logged_at);
+    currentE1rm(sets);
+    expect(sets.map((s) => s.logged_at)).toEqual(before);
+  });
+});
+
+describe('detectPlateau shape', () => {
+  const series = (n) => Array.from({ length: n }, (_, i) => ({ sessionId: `s${i}`, rir: 3 }));
+
+  it('carries the same keys whether or not there is enough data', () => {
+    // buildCoachFacts ships this object to the chat coach. A verdict that sometimes omits
+    // `stability` and `drop` leaves the model guessing whether absence means "stable" or
+    // "unknown"; a stated null is a fact it can read.
+    const thin = detectPlateau(series(2));
+    const full = detectPlateau(series(4));
+    expect(Object.keys(full).every((k) => k in thin)).toBe(true);
+    expect(thin.stability).toBeNull();
+    expect(thin.drop).toBeNull();
+    expect(thin.watch).toBe(false);
+    expect(thin.sessions).toBe(2);
+  });
+});
+
+describe('BACKOFF_FACTOR', () => {
+  it('is the fraction the plateau card quotes and the plan writes', () => {
+    // Shared so the card cannot promise one weight while coach_plans stores another.
+    expect(BACKOFF_FACTOR).toBe(0.88);
   });
 });

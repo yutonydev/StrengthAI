@@ -175,7 +175,7 @@ days.
 
 ```bash
 npm run dev     # http://localhost:5173
-npm test        # 87 tests, no database or network needed
+npm test        # 112 tests, no database or network needed
 npm run lint
 npm run build
 ```
@@ -206,20 +206,35 @@ Pure logic is separated from I/O on purpose, so the hard-to-get-right parts are 
 without a database or a UI.
 
 ```
-src/lib/resolver.js       vocabulary, normalization, junk filter, local match
+src/lib/resolver.js       normalization, junk filter, local match (re-exports the vocabulary)
 src/lib/coach.js          matched-RIR series, plateau + program detection, goal projection,
                           per-muscle volume, the facts payload for the chat coach
-src/lib/units.js          kg/lb, RIR/RPE, readiness score
+src/lib/units.js          kg/lb, RIR → RPE, readiness score
 src/lib/suggestNext.js    "up next" ranking: template order, then co-occurrence, then recency
+src/lib/bodyParts.js      body-part order and labels for the weekly-goals UI
+src/lib/localState.js     the localStorage keys, and the one place that clears them
 
 src/api/db.js             the ONLY file that touches Supabase
+src/api/queryCache.js     stale-while-revalidate cache; writes invalidate their own keys
 src/api/resolveExercise.js  the three resolution gates
 src/api/coachChat.js      builds the facts payload, calls the chat function
 
-supabase/schema.sql       tables, indexes, RLS policies
-supabase/functions/       resolve-exercise, coach-chat, and _shared/usage.ts (cap logic)
-prototype/                the original high-fidelity UI reference
+src/hooks/useQuery.js         read one cached query
+src/hooks/useVariantMap.js    id → variant lookup
+src/hooks/useExerciseOrder.js add / reorder, shared by the workout and template screens
+
+supabase/schema.sql            tables, indexes, RLS policies
+supabase/functions/            resolve-exercise, coach-chat
+supabase/functions/_shared/    vocab.ts (the vocabulary, shared with the browser),
+                               usage.ts (cap logic), http.ts (CORS, JSON, the user gate)
+public/sw.js                   offline shell: network-first HTML, cache-first hashed assets
+prototype/                     the original high-fidelity UI reference
 ```
+
+**The exercise vocabulary lives in `supabase/functions/_shared/vocab.ts`, not in
+`src/lib/resolver.js`.** It is the one thing the browser and the Deno edge function both
+need to agree on exactly, and a Deno function can only import from inside
+`supabase/functions/`. `resolver.js` re-exports it, so `from '@/lib/resolver'` still works.
 
 Screens live in `src/pages`: Home, Workout, Progress, CoachChat, Coach (insights),
 Templates, TemplateEditor, SessionDetail, Settings, and the four auth pages.

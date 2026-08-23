@@ -13,6 +13,8 @@ import { canonicalLabel } from '@/lib/resolver'
 import { display } from '@/lib/units'
 import { sessionVolumeKg } from '@/lib/coach'
 import { Sheet } from '@/components/Sheet'
+import { useVariantMap } from '@/hooks/useVariantMap'
+import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
 
 export default function SessionDetail() {
   const { sessionId } = useParams()
@@ -60,11 +62,7 @@ export default function SessionDetail() {
     }
   }, [sessionId])
 
-  const variantById = useMemo(() => {
-    const map = new Map()
-    variantList.forEach((v) => map.set(v.id, v))
-    return map
-  }, [variantList])
+  const variantById = useVariantMap(variantList)
 
   const stats = useMemo(() => {
     if (!session) return []
@@ -140,11 +138,7 @@ export default function SessionDetail() {
   }
 
   if (loading) {
-    return (
-      <div className="flex min-h-svh items-center justify-center bg-background text-muted-foreground">
-        Loading…
-      </div>
-    )
+    return <ScreenLoading full />
   }
 
   return (
@@ -166,11 +160,7 @@ export default function SessionDetail() {
       </div>
 
       <div className="flex flex-col gap-3 px-[18px] pt-[14px] pb-8">
-        {error && (
-          <div className="rounded-[14px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
-            {error}
-          </div>
-        )}
+        <ErrorBanner error={error} />
 
         <div className="grid grid-cols-3 gap-2">
           {stats.map((s) => (

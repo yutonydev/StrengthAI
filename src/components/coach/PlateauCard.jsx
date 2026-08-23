@@ -1,10 +1,11 @@
 import { display } from '@/lib/units'
+import { BACKOFF_FACTOR } from '@/lib/coach'
 
 export function PlateauCard({ rec, unit, onDismiss, onAccept }) {
   const load = display(rec.actions.matchedLoadKg, unit)
   const window = `${rec.actions.sessions} matched sessions at ${load} ${unit}`
   const suggestions = [
-    `Drop to ${Math.round(load * 0.88)} ${unit} for one session, then rebuild`,
+    `Drop to ${Math.round(load * BACKOFF_FACTOR)} ${unit} for one session, then rebuild`,
     'Add one back-off set at RIR 3 instead of pushing the top set',
     'Re-test in two weeks before changing the movement',
   ]

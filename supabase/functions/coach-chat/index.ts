@@ -16,6 +16,7 @@
  * edited by the client.
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { json, preflight, userIdFrom } from '../_shared/http.ts';
 import { capFromEnv, checkCap, dayKey } from '../_shared/usage.ts';
 
 // Pinned to a version alias, never `-latest`. `claude-3-5-haiku-latest` broke the resolver
@@ -314,29 +315,13 @@ async function runStageSession(admin: Admin, userId: string, input: Record<strin
 }
 
 Deno.serve(async (req) => {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  };
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
-
-  const json = (body: unknown, status = 200) =>
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { ...cors, 'Content-Type': 'application/json' },
-    });
+  const pre = preflight(req);
+  if (pre) return pre;
 
   try {
     const authHeader = req.headers.get('Authorization') ?? '';
 
-    const anon = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: userData } = await anon.auth.getUser();
-    const userId = userData?.user?.id;
+    const userId = await userIdFrom(authHeader);
     if (!userId) return json({ error: 'Not signed in' }, 401);
 
     const body = await req.json();

@@ -44,7 +44,11 @@ export async function resolveExercise(text, variants = []) {
       muscle: local.muscle,
       joint_actions: local.joint_actions ?? [],
       body_part: local.body_part,
-      note: local.note ?? '',
+      // `load_note`, not `note` — that is the column on exercise_variants. Reading the wrong
+      // name made this always '', so pressing Enter on a phrase already in the registry
+      // replaced the local match (which reads it correctly) with one that had silently
+      // dropped the loading note, and the "Why the load will differ" panel vanished.
+      note: local.load_note ?? '',
       confidence: 'high',
       source: 'local',
       raw,
@@ -109,18 +113,4 @@ export async function resolveExercise(text, variants = []) {
       raw,
     };
   }
-}
-
-/** Shape for `variants.ensure` when logging an unresolved phrase as typed. */
-export function asTypedVariant(raw) {
-  return {
-    base: normalizePhrase(raw),
-    mods: [],
-    muscles: [],
-    muscle: null,
-    joint_actions: [],
-    body_part: null,
-    source_text: raw,
-    resolved_by: 'manual',
-  };
 }

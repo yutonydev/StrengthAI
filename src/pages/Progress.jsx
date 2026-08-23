@@ -17,6 +17,7 @@ import { RirChart } from '@/components/progress/RirChart'
 import { Sparkline } from '@/components/progress/Sparkline'
 import { useQuery } from '@/hooks/useQuery'
 import { qk } from '@/api/queryCache'
+import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
 
 const STABILITY_LABEL = { declining: 'Declining', volatile: 'Volatile', stable: 'Stable' }
 
@@ -124,20 +125,12 @@ export default function Progress() {
     : 'Log a few sets to see this.'
 
   if (loading) {
-    return (
-      <div className="flex min-h-full items-center justify-center bg-background text-muted-foreground">
-        Loading…
-      </div>
-    )
+    return <ScreenLoading />
   }
 
   return (
     <div className="min-h-full bg-background px-[18px] pt-[14px] pb-[76px] text-foreground">
-      {error && (
-        <div className="mb-3 rounded-[14px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
-          {error}
-        </div>
-      )}
+      <ErrorBanner error={error} className="mb-3" />
 
       <div className="mb-4 text-[22px] font-bold tracking-[-0.025em]">Progress</div>
 

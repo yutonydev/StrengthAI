@@ -7,6 +7,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { clearCache, invalidate, qk } from './queryCache';
+import { clearLocalState } from '@/lib/localState';
 
 export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -49,9 +50,13 @@ export const auth = {
   // Cache is per-user data held in module scope, so it has to go on the way out —
   // otherwise the next account to sign in on this device renders the previous one's
   // sessions and sets for a moment before its own reads land.
+  //
+  // localStorage goes with it, and matters more: module scope dies on reload, a stored
+  // chat thread does not. See lib/localState.js for what is held there.
   signOut: async () => {
     const result = await supabase.auth.signOut();
     clearCache();
+    clearLocalState();
     return result;
   },
   resetPassword: (email) =>

@@ -11,6 +11,42 @@ import { display } from './units.js';
 /** Epley estimated 1RM. Fine up to ~10 reps, drifts optimistic beyond that. */
 export const e1rm = (weightKg, reps) => (weightKg || 0) * (1 + (reps || 0) / 30);
 
+/** How many recent sets count as "now" for a goal. Roughly the last two or three sessions. */
+const CURRENT_WINDOW = 9;
+
+/**
+ * Where a lift stands today: the best estimated 1RM across the last few sets.
+ *
+ * Best-of-a-window rather than the single latest set, because the newest set is often a
+ * back-off or a warmup and would report a lifter as having gone backwards on a day they
+ * hit a PR earlier in the session.
+ *
+ * This existed in four places — the goal card, both goal paths in the Insights screen, and
+ * the facts payload — each re-deriving `.slice(-9)` and `Math.max(...map(e1rm))` by hand.
+ * They agreed, but the number drives a progress bar, a projection, the "target reached"
+ * flip that writes to the database, and what the chat coach quotes back. Four copies of the
+ * definition of "where you are now" is four chances for those to start disagreeing.
+ *
+ * @param {Array} sets rows for ONE variant, in any order
+ * @returns {number} kilograms, 0 when there is no history
+ */
+export function currentE1rm(sets = []) {
+  const recent = [...sets]
+    .sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
+    .slice(-CURRENT_WINDOW);
+  return recent.length ? Math.max(...recent.map((s) => e1rm(s.weight_kg, s.reps))) : 0;
+}
+
+/**
+ * The back-off fraction applied to a plateaued lift's matched load.
+ *
+ * Shared because it is quoted and then acted on in two different files: PlateauCard renders
+ * "drop to N" and Coach.jsx writes that target into coach_plans. If those two drifted the
+ * app would promise one weight and program another — and the lifter would only find out at
+ * the rack, with the card no longer on screen to compare against.
+ */
+export const BACKOFF_FACTOR = 0.88;
+
 /**
  * RIR at matched load, one point per session.
  *
@@ -75,7 +111,22 @@ export function matchedRirSeries(sets = [], dates = {}, excluded = new Set()) {
  * session is not a plateau, and half a point is inside the noise of self-reported RIR.
  */
 export function detectPlateau(series = []) {
-  if (series.length < 3) return { stalled: false, reason: 'not enough matched sessions' };
+  // Every key the full verdict carries is present here too, valued null where there is
+  // genuinely nothing to say. The short branch used to return {stalled, reason} alone, and
+  // `buildCoachFacts` ships this object straight to the chat coach — which then saw a
+  // verdict missing `stability`, `drop` and `watch` entirely, and had to guess whether the
+  // absence meant "stable" or "unknown". A stated null is a fact it can read; a missing key
+  // is a gap it fills in.
+  if (series.length < 3) {
+    return {
+      stalled: false,
+      watch: false,
+      drop: null,
+      sessions: series.length,
+      stability: null,
+      reason: 'not enough matched sessions',
+    };
+  }
   const drop = series[0].rir - series[series.length - 1].rir;
   const rirs = series.slice(-5).map((p) => p.rir);
   const mean = rirs.reduce((a, b) => a + b, 0) / rirs.length;
@@ -107,19 +158,17 @@ export function detectProgramPattern(perVariant = [], readiness = []) {
 
   if (stalled.length < 2) return { detected: false, stalled };
 
-  // readiness moving the same way turns a coincidence into a diagnosis
-  let readinessTrend = null;
-  if (readiness.length >= 4) {
-    const half = Math.floor(readiness.length / 2);
-    const avg = (arr) => arr.reduce((a, r) => a + (r.score || 0), 0) / (arr.length || 1);
-    readinessTrend = Math.round((avg(readiness.slice(half)) - avg(readiness.slice(0, half))) * 10) / 10;
-  }
+  // Readiness moving the same way turns a coincidence into a diagnosis. Over the WHOLE
+  // series rather than readinessTrend's default recent window: a program-level pattern is a
+  // claim about the block, so the comparison has to span the block. The half-split maths
+  // itself is shared rather than repeated inline, which is what it used to be.
+  const trend = readinessTrend(readiness, readiness.length);
 
   return {
     detected: true,
     stalled,
-    readinessTrend,
-    confidence: stalled.length >= 3 && readinessTrend != null && readinessTrend < -0.5 ? 'high' : 'moderate',
+    readinessTrend: trend,
+    confidence: stalled.length >= 3 && trend != null && trend < -0.5 ? 'high' : 'moderate',
   };
 }
 
@@ -365,6 +414,10 @@ export function buildCoachFacts({
   const datesBySession = {};
   for (const s of sessions) datesBySession[s.id] = s.started_at;
 
+  // Built once rather than a `variants.find(...)` inside the goals map below, which was a
+  // linear scan of the whole registry per goal.
+  const variantsById = new Map(variants.map((v) => [v.id, v]));
+
   const setsByVariant = new Map();
   for (const s of sets) {
     if (!setsByVariant.has(s.variant_id)) setsByVariant.set(s.variant_id, []);
@@ -403,7 +456,9 @@ export function buildCoachFacts({
           rir: last.rir ?? null,
           loggedAt: last.logged_at,
         },
-        lastTrainedAt: chrono(rows).at(-1).logged_at,
+        // Same row as `lastSet` above — chrono() sorts a copy, so calling it twice sorted
+        // the identical array twice for one field.
+        lastTrainedAt: last.logged_at,
         // kept out of the payload — the model gets the verdict, not 40 raw points
         series,
       };
@@ -427,9 +482,8 @@ export function buildCoachFacts({
     .filter((g) => g.status === 'active')
     .map((g) => {
       const rows = chrono(setsByVariant.get(g.variant_id) ?? []);
-      const recent = rows.slice(-9);
-      const currentKg = recent.length ? Math.max(...recent.map((s) => e1rm(s.weight_kg, s.reps))) : 0;
-      const variant = variants.find((v) => v.id === g.variant_id);
+      const currentKg = currentE1rm(rows);
+      const variant = variantsById.get(g.variant_id);
       return {
         variantId: g.variant_id,
         name: variant ? canonicalLabel(variant.base) : 'Unknown exercise',

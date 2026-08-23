@@ -1,19 +1,18 @@
 import { CheckCircle2, X } from 'lucide-react'
 import { canonicalLabel } from '@/lib/resolver'
 import { display } from '@/lib/units'
-import { e1rm, projectGoal } from '@/lib/coach'
+import { currentE1rm, projectGoal } from '@/lib/coach'
 
 export function GoalCard({ goal, sets, unit, onArchive, onRemove, onNext }) {
   const variant = goal.exercise_variants
   const sorted = [...sets].sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
-  const recent = sorted.slice(-9)
-  const currentKg = recent.length ? Math.max(...recent.map((s) => e1rm(s.weight_kg, s.reps))) : 0
+  const currentKg = currentE1rm(sorted)
   const achieved = goal.status === 'achieved' || currentKg >= goal.target_kg
 
   const current = Math.round(display(currentKg, unit))
   const pct = Math.min(100, Math.round((currentKg / goal.target_kg) * 100))
 
-  const lastSet = recent[recent.length - 1]
+  const lastSet = sorted.at(-1)
   const reached = `Hit at ${lastSet ? `${display(lastSet.weight_kg, unit)} ${unit} × ${lastSet.reps}` : `${current} ${unit}`} — estimated, not a tested single. Test it or set the next target.`
 
   const projection = achieved

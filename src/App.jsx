@@ -1,19 +1,30 @@
+import { lazy } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { AppLayout, PlainLayout } from '@/components/AppLayout'
-import Login from '@/pages/Login'
-import Register from '@/pages/Register'
-import ForgotPassword from '@/pages/ForgotPassword'
-import ResetPassword from '@/pages/ResetPassword'
 import Home from '@/pages/Home'
-import Workout from '@/pages/Workout'
-import Progress from '@/pages/Progress'
-import Coach from '@/pages/Coach'
-import CoachChat from '@/pages/CoachChat'
-import SessionDetail from '@/pages/SessionDetail'
-import Settings from '@/pages/Settings'
-import Templates from '@/pages/Templates'
-import TemplateEditor from '@/pages/TemplateEditor'
+import Login from '@/pages/Login'
+
+/*
+ * Home and Login are eager: they are the two screens the app can open on, and code-splitting
+ * the first paint would only trade bundle size for a spinner on the critical path.
+ *
+ * Everything else is lazy. The whole app used to arrive as one 637 kB chunk, which meant a
+ * lifter opening Home on gym wifi also downloaded the charts, the template editor and both
+ * coach screens before anything rendered. Suspense boundaries live in AppLayout, around the
+ * Outlet, so a route being fetched shows the same placeholder as a route being loaded.
+ */
+const Register = lazy(() => import('@/pages/Register'))
+const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'))
+const ResetPassword = lazy(() => import('@/pages/ResetPassword'))
+const Workout = lazy(() => import('@/pages/Workout'))
+const Progress = lazy(() => import('@/pages/Progress'))
+const Coach = lazy(() => import('@/pages/Coach'))
+const CoachChat = lazy(() => import('@/pages/CoachChat'))
+const SessionDetail = lazy(() => import('@/pages/SessionDetail'))
+const Settings = lazy(() => import('@/pages/Settings'))
+const Templates = lazy(() => import('@/pages/Templates'))
+const TemplateEditor = lazy(() => import('@/pages/TemplateEditor'))
 
 // The screen fade lives in the layout routes, not in a wrapper around <Routes>. Wrapping
 // everything put the bottom nav inside the animated element, and the animation's retained

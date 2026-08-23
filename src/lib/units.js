@@ -18,7 +18,6 @@ export const toKg = (value, unit) => {
 export const step = (unit) => (unit === 'lb' ? 5 : 2.5);
 
 export const rirToRpe = (rir) => (rir == null ? null : Math.round((10 - rir) * 2) / 2);
-export const rpeToRir = (rpe) => (rpe == null ? null : Math.round((10 - rpe) * 2) / 2);
 
 /**
  * Readiness score, 0–10. Sleep saturates at 7 hours — more than that doesn't keep

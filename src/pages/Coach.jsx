@@ -14,24 +14,66 @@ import {
 } from '@/api/db'
 import { canonicalLabel } from '@/lib/resolver'
 import { display } from '@/lib/units'
-import { detectPlateau, detectProgramPattern, e1rm, matchedRirSeries, sessionVolumeKg, weekRange } from '@/lib/coach'
+import {
+  BACKOFF_FACTOR,
+  currentE1rm,
+  detectPlateau,
+  detectProgramPattern,
+  matchedRirSeries,
+  sessionVolumeKg,
+  weekRange,
+} from '@/lib/coach'
 import { PlateauCard } from '@/components/coach/PlateauCard'
 import { GoalCard } from '@/components/coach/GoalCard'
 import { GoalSheet } from '@/components/coach/GoalSheet'
+import { useVariantMap } from '@/hooks/useVariantMap'
+import { useQuery } from '@/hooks/useQuery'
+import { fetchQuery, qk } from '@/api/queryCache'
+import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
+
+// Stable identity for the not-yet-loaded case, so `?? EMPTY` doesn't hand the memos
+// below a brand-new array on every render.
+const EMPTY = Object.freeze([])
 
 const PROGRAM_ACTION =
   'Take a deload week — same movements, 60% of your usual sets, top sets at RIR 4 — then re-test the lifts above before changing programming.'
 
 export default function Coach() {
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [unit, setUnit] = useState('lb')
-  const [variantList, setVariantList] = useState([])
+  // The six shared reads go through the query cache, like Home and Progress. This screen
+  // used to fetch all of them itself and gate on a full-screen "Loading…" every single
+  // mount — the exact behaviour the cache was built to remove, on the one screen that
+  // still had it. A revisit now renders from cache on the first frame.
+  const profileQ = useQuery(qk.profile, () => profileApi.get())
+  const sessionsQ = useQuery(qk.sessions, () => sessions.list())
+  const setsQ = useQuery(qk.sets, () => setsApi.all())
+  const variantsQ = useQuery(qk.variants, () => variantsApi.list())
+  const readinessQ = useQuery(qk.readiness, () => readinessApi.list())
+  const excludedQ = useQuery(qk.excludedFlags, () => flagsApi.byStatus('excluded'))
+
+  const unit = profileQ.data?.unit ?? 'lb'
+  const variantList = variantsQ.data ?? EMPTY
+  const allSets = setsQ.data ?? EMPTY
+
+  const loading =
+    profileQ.loading || sessionsQ.loading || setsQ.loading || variantsQ.loading ||
+    readinessQ.loading || excludedQ.loading
+
+  const [actionError, setActionError] = useState(null)
+  const error =
+    actionError || profileQ.error || sessionsQ.error || setsQ.error || variantsQ.error ||
+    readinessQ.error || excludedQ.error
+  const setError = setActionError
+
+  // Detection output — not cached keys, so these stay local.
   const [recommendationsList, setRecommendationsList] = useState([])
   const [openPlans, setOpenPlans] = useState([])
   const [scanning, setScanning] = useState(false)
+  // Whether a detection pass has finished at least once. The screen now paints from cache
+  // before detection completes, so without this the plateau and goal lists render their
+  // empty states — "No stalled lifts right now", "No strength goals yet" — while the pass
+  // that would populate them is still running. Both are claims, and both would be false.
+  const [scanned, setScanned] = useState(false)
   const [scanMsg, setScanMsg] = useState(null)
-  const [allSets, setAllSets] = useState([])
   const [goalsList, setGoalsList] = useState([])
   const [goalSheetOpen, setGoalSheetOpen] = useState(false)
   const [goalSheetInitial, setGoalSheetInitial] = useState(null)
@@ -41,33 +83,35 @@ export default function Coach() {
   // and both sides could decide independently to create a recommendation
   const runningRef = useRef(false)
 
-  const variantById = useMemo(() => {
-    const map = new Map()
-    variantList.forEach((v) => map.set(v.id, v))
-    return map
-  }, [variantList])
+  const variantById = useVariantMap(variantList)
 
   // Detection runs client-side, on load and on demand — there is no cron here. Each
   // pass recomputes plateau/program signals from real sets and only writes a new
   // coach_recommendations row when the dedup rule says this is a genuinely new episode
   // (see the load-based re-surfacing rule below).
-  const runDetection = useCallback(async () => {
+  /**
+   * @param {boolean} force `true` for the Scan button, which must re-read rather than reuse
+   *   whatever the cache is holding. The mount pass passes `false`, so it shares the request
+   *   the useQuery hooks above already have in flight instead of doubling every read.
+   */
+  const runDetection = useCallback(async ({ force = false } = {}) => {
     if (runningRef.current) return
     runningRef.current = true
     setScanning(true)
     setScanMsg(null)
     try {
-      const [sessionList, allSets, variantRows, readinessList, excludedFlags, allRecs, goalRows] = await Promise.all([
-        sessions.list(),
-        setsApi.all(),
-        variantsApi.list(),
-        readinessApi.list(),
-        flagsApi.byStatus('excluded'),
-        recommendationsApi.all(),
-        goalsApi.list(),
-      ])
-      setVariantList(variantRows)
-      setAllSets(allSets)
+      // Read through the cache rather than around it, so the numbers this pass reasons about
+      // and the numbers on screen are the same object — not two reads that could disagree.
+      const [sessionList, setRows, variantRows, readinessList, excludedFlags, allRecs, goalRows] =
+        await Promise.all([
+          fetchQuery(qk.sessions, () => sessions.list(), { force }),
+          fetchQuery(qk.sets, () => setsApi.all(), { force }),
+          fetchQuery(qk.variants, () => variantsApi.list(), { force }),
+          fetchQuery(qk.readiness, () => readinessApi.list(), { force }),
+          fetchQuery(qk.excludedFlags, () => flagsApi.byStatus('excluded'), { force }),
+          recommendationsApi.all(),
+          goalsApi.list(),
+        ])
 
       // write-on-read, same pattern as recommendation creation: the first time a
       // goal's current e1RM clears its target, flip the row to 'achieved' so it stops
@@ -75,11 +119,7 @@ export default function Coach() {
       const updatedGoals = await Promise.all(
         goalRows.map(async (g) => {
           if (g.status !== 'active') return g
-          const variantSets = allSets
-            .filter((s) => s.variant_id === g.variant_id)
-            .sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
-          const recent = variantSets.slice(-9)
-          const currentKg = recent.length ? Math.max(...recent.map((s) => e1rm(s.weight_kg, s.reps))) : 0
+          const currentKg = currentE1rm(setRows.filter((s) => s.variant_id === g.variant_id))
           if (currentKg < g.target_kg) return g
           const updated = await goalsApi.update(g.id, { status: 'achieved', achieved_at: new Date().toISOString() })
           return { ...g, ...updated }
@@ -113,7 +153,7 @@ export default function Coach() {
         })
         if (!weekSessions.length) continue
         const weekIds = new Set(weekSessions.map((s) => s.id))
-        const weekSets = allSets.filter((s) => weekIds.has(s.session_id))
+        const weekSets = setRows.filter((s) => weekIds.has(s.session_id))
         const weekReadiness = readinessList.filter((r) => weekIds.has(r.session_id))
         const avgRpe = avg(weekSets, (s) => s.rpe)
         const trained = `You trained ${plural(weekSessions.length, 'time')} for ${plural(weekSets.length, 'set')}`
@@ -146,11 +186,11 @@ export default function Coach() {
       })
       const excludedIds = new Set(excludedFlags.map((f) => f.session_id))
 
-      const usedVariantIds = new Set(allSets.map((s) => s.variant_id))
+      const usedVariantIds = new Set(setRows.map((s) => s.variant_id))
       const perVariant = variantRows
         .filter((v) => usedVariantIds.has(v.id))
         .map((v) => {
-          const variantSets = allSets.filter((s) => s.variant_id === v.id)
+          const variantSets = setRows.filter((s) => s.variant_id === v.id)
           const { series, modal } = matchedRirSeries(variantSets, datesBySession, excludedIds)
           return {
             variantId: v.id,
@@ -167,7 +207,7 @@ export default function Coach() {
 
         // The load the plateau was measured at — the modal weight of the matched series, not
         // the most recent set. Those diverge on any deload, back-off set or rep-scheme change,
-        // and this number is both shown on the card and multiplied by 0.88 for the back-off
+        // and this number is both shown on the card and multiplied by BACKOFF_FACTOR for the back-off
         // target, so taking the wrong one turns a reporting slip into wrong programming.
         if (!pv.modal) continue
         const matchedLoadKg = pv.modal.weightKg
@@ -244,20 +284,21 @@ export default function Coach() {
         `Checked ${perVariant.length} variant${perVariant.length === 1 ? '' : 's'} across ${sessionList.length} session${sessionList.length === 1 ? '' : 's'} · ${stalledCount} stalled, ${programPattern.detected ? 1 : 0} program-level pattern${programPattern.detected ? '' : 's'}.`
       )
     } catch (err) {
-      setError(err.message)
+      setActionError(err.message)
     } finally {
       runningRef.current = false
       setScanning(false)
+      setScanned(true)
     }
+    // setActionError is a state setter, which React guarantees is stable for the life of
+    // the component — naming it here would be noise, and the aliased `setError` is what
+    // confused the linter into asking.
   }, [])
 
+  // Detection still runs on mount, but it no longer gates the render — `loading` comes from
+  // the cache above, so a revisit paints instantly and this pass refreshes behind it.
   useEffect(() => {
-    let alive = true
-    profileApi.get().then((p) => alive && setUnit(p?.unit ?? 'lb'))
-    runDetection().finally(() => alive && setLoading(false))
-    return () => {
-      alive = false
-    }
+    runDetection()
   }, [runDetection])
 
   const handleDismiss = async (rec) => {
@@ -271,7 +312,7 @@ export default function Coach() {
 
   const handleAccept = async (rec) => {
     try {
-      const targetLoadKg = rec.actions.matchedLoadKg * 0.88
+      const targetLoadKg = rec.actions.matchedLoadKg * BACKOFF_FACTOR
       const plan = await plansApi.create({
         variant_id: rec.variant_id,
         target_load_kg: targetLoadKg,
@@ -329,11 +370,7 @@ export default function Coach() {
   }
 
   const handleNextGoal = (goal) => {
-    const variantSets = allSets
-      .filter((s) => s.variant_id === goal.variant_id)
-      .sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
-    const recent = variantSets.slice(-9)
-    const currentKg = recent.length ? Math.max(...recent.map((s) => e1rm(s.weight_kg, s.reps))) : 0
+    const currentKg = currentE1rm(allSets.filter((s) => s.variant_id === goal.variant_id))
     const current = display(currentKg, unit)
     setGoalSheetInitial({
       variantId: goal.variant_id,
@@ -349,11 +386,7 @@ export default function Coach() {
   }, [allSets, variantList])
 
   if (loading) {
-    return (
-      <div className="flex min-h-full items-center justify-center bg-background text-muted-foreground">
-        Loading…
-      </div>
-    )
+    return <ScreenLoading />
   }
 
   const plateauRecs = recommendationsList.filter((r) => r.kind === 'plateau')
@@ -361,11 +394,7 @@ export default function Coach() {
 
   return (
     <div className="min-h-full bg-background px-[18px] pt-[14px] pb-[76px] text-foreground">
-      {error && (
-        <div className="mb-3 rounded-[14px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
-          {error}
-        </div>
-      )}
+      <ErrorBanner error={error} className="mb-3" />
 
       <div className="text-[22px] font-bold tracking-[-0.025em]">Coach</div>
       <div className="mt-1 mb-[18px] text-[12.5px] leading-[1.45] text-muted-foreground">
@@ -412,7 +441,7 @@ export default function Coach() {
           Plateau diagnoses
         </div>
         <button
-          onClick={runDetection}
+          onClick={() => runDetection({ force: true })}
           disabled={scanning}
           className="flex items-center gap-[5px] text-[11.5px] font-semibold text-primary disabled:opacity-60"
         >
@@ -429,7 +458,7 @@ export default function Coach() {
       <div className="mb-6 flex flex-col gap-[10px]">
         {plateauRecs.length === 0 && (
           <div className="rounded-2xl border border-border bg-card p-4 text-center text-[12.5px] text-muted-foreground">
-            No stalled lifts right now.
+            {scanned ? 'No stalled lifts right now.' : 'Checking your lifts…'}
           </div>
         )}
         {plateauRecs.map((rec) => (
@@ -493,7 +522,7 @@ export default function Coach() {
         </button>
       </div>
       <div className="flex flex-col gap-[10px]">
-        {goalsList.length === 0 && (
+        {goalsList.length === 0 && scanned && (
           <div className="rounded-2xl border border-border bg-card p-4 text-center text-[12.5px] text-muted-foreground">
             No strength goals yet.
           </div>

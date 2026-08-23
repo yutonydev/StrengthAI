@@ -12,6 +12,10 @@ export default function ForgotPassword() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError(null)
+    // Cleared alongside the error, matching Register. Without this a second send left the
+    // previous "Reset link sent" notice on screen throughout, so a failed resend looked
+    // like it had succeeded.
+    setMessage(null)
     setSubmitting(true)
     try {
       await requestPasswordReset(email)

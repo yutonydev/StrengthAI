@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, ArrowUp, CalendarPlus, Dumbbell, Sparkles } from 'lucide-react'
 import { askCoach, loadCoachFacts } from '@/api/coachChat'
+import { ErrorBanner } from '@/components/ScreenState'
+import { CHAT_KEY } from '@/lib/localState'
 
 /**
  * The chat coach.
@@ -27,6 +29,38 @@ const STARTERS = [
 
 /** Height of the floating BottomNav, so the composer sits directly on top of it. */
 const NAV_H = 62
+
+/**
+ * The thread survives a reload.
+ *
+ * Everything else in the app persists, and a chat that vanished on refresh was the one place
+ * the lifter could lose something they had typed — mid-workout, with the screen locking
+ * itself between sets, that is not a rare event.
+ *
+ * localStorage rather than a table: the same choice the rest timer already makes. The thread
+ * is device-local working state, not training data — nothing the coach says here is a fact
+ * about the lifter that is not already derivable from their sets, so there is nothing to
+ * lose by it being per-device, and a table would need a migration, an RLS policy and a
+ * retention answer for content the model wrote.
+ *
+ * The key lives in lib/localState.js, which is also what clears it on sign-out — a thread
+ * left behind for the next account on a shared phone is the failure mode that matters here.
+ */
+/** Keeps the stored thread bounded; the server only sends the last 20 turns anyway. */
+const CHAT_CAP = 40
+
+function loadThread() {
+  try {
+    const raw = localStorage.getItem(CHAT_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    // Corrupt or unreadable (private mode, quota, a half-written value) is not worth
+    // surfacing — an empty thread is a working screen, an exception is a blank one.
+    localStorage.removeItem(CHAT_KEY)
+    return []
+  }
+}
 
 function ThinkingDots() {
   return (
@@ -87,16 +121,23 @@ function ActionCard({ toolCall, onOpen }) {
 
 export default function CoachChat() {
   const navigate = useNavigate()
-  const [messages, setMessages] = useState([])
+  const [messages, setMessages] = useState(loadThread)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState(null)
   const endRef = useRef(null)
-  const inputRef = useRef(null)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, sending])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-CHAT_CAP)))
+    } catch {
+      // A full or unavailable store must not break the conversation in front of the lifter.
+    }
+  }, [messages])
 
   const openAction = (toolCall) => {
     const { name, result } = toolCall
@@ -153,12 +194,22 @@ export default function CoachChat() {
       <div className="px-[18px] pt-[14px]">
         <div className="flex items-center justify-between gap-2">
           <div className="text-[22px] font-bold tracking-[-0.025em]">Coach</div>
-          <button
-            onClick={() => navigate('/coach/insights')}
-            className="shrink-0 text-[11.5px] font-semibold text-primary"
-          >
-            Insights
-          </button>
+          <div className="flex shrink-0 items-center gap-[14px]">
+            {!empty && (
+              <button
+                onClick={() => setMessages([])}
+                className="text-[11.5px] font-semibold text-muted-foreground"
+              >
+                Clear
+              </button>
+            )}
+            <button
+              onClick={() => navigate('/coach/insights')}
+              className="text-[11.5px] font-semibold text-primary"
+            >
+              Insights
+            </button>
+          </div>
         </div>
         <div className="mt-1 text-[12.5px] leading-[1.45] text-muted-foreground">
           Ask about your training or about lifting in general. Anything it says about you comes
@@ -166,11 +217,7 @@ export default function CoachChat() {
         </div>
       </div>
 
-      {error && (
-        <div className="mx-[18px] mt-3 rounded-[14px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
-          {error}
-        </div>
-      )}
+      <ErrorBanner error={error} className="mx-[18px] mt-3" />
 
       <div className="px-[18px] pt-[18px]" style={{ paddingBottom: `${NAV_H + 78}px` }}>
         {empty && (
@@ -242,7 +289,6 @@ export default function CoachChat() {
             className="flex items-end gap-[8px]"
           >
             <textarea
-              ref={inputRef}
               rows={1}
               value={input}
               onChange={(e) => setInput(e.target.value)}

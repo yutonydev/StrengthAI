@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react'
 import {
@@ -10,6 +10,9 @@ import {
 } from '@/api/db'
 import { canonicalLabel } from '@/lib/resolver'
 import { AddExerciseSheet } from '@/components/workout/AddExerciseSheet'
+import { useVariantMap } from '@/hooks/useVariantMap'
+import { startFromTemplate, useExerciseOrder } from '@/hooks/useExerciseOrder'
+import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
 
 export default function TemplateEditor() {
   const { templateId } = useParams()
@@ -62,11 +65,19 @@ export default function TemplateEditor() {
     }
   }, [templateId, navigate])
 
-  const variantById = useMemo(() => {
-    const map = new Map()
-    variantList.forEach((v) => map.set(v.id, v))
-    return map
-  }, [variantList])
+  const variantById = useVariantMap(variantList)
+
+  const persistOrder = useCallback(
+    (order) => templatesApi.update(template.id, { exercise_order: order }),
+    [template?.id]
+  )
+  const { addExercise: handleAddExercise, reorder } = useExerciseOrder({
+    row: template,
+    setRow: setTemplate,
+    persistOrder,
+    setVariants: setVariantList,
+    onError: setError,
+  })
 
   const items = useMemo(() => {
     const order = template?.exercise_order || []
@@ -90,22 +101,6 @@ export default function TemplateEditor() {
     }
   }
 
-  const reorder = async (index, direction) => {
-    const prevOrder = template.exercise_order || []
-    const newIndex = index + direction
-    if (newIndex < 0 || newIndex >= prevOrder.length) return
-    const order = [...prevOrder]
-    ;[order[index], order[newIndex]] = [order[newIndex], order[index]]
-
-    setTemplate((t) => ({ ...t, exercise_order: order }))
-    try {
-      await templatesApi.update(template.id, { exercise_order: order })
-    } catch (err) {
-      setTemplate((t) => ({ ...t, exercise_order: prevOrder }))
-      setError(err.message)
-    }
-  }
-
   const removeItem = async (vid) => {
     const prevOrder = template.exercise_order || []
     const newOrder = prevOrder.filter((id) => id !== vid)
@@ -118,62 +113,15 @@ export default function TemplateEditor() {
     }
   }
 
-  const handleAddExercise = async ({
-    variantId, base, mods, muscle, muscles, jointActions, bodyPart, sourceText,
-    resolvedBy, loadNote, confidence,
-  }) => {
-    let vid = variantId
-    if (!vid) {
-      const created = await variantsApi.ensure({
-        base,
-        mods,
-        muscle,
-        muscles,
-        joint_actions: jointActions,
-        body_part: bodyPart,
-        source_text: sourceText,
-        resolved_by: resolvedBy,
-        load_note: loadNote,
-        confidence,
-      })
-      vid = created.id
-      setVariantList((list) => (list.some((v) => v.id === created.id) ? list : [...list, created]))
-    }
-    await variantsApi.bumpUse(vid)
-
-    const prevOrder = template.exercise_order || []
-    if (!prevOrder.includes(vid)) {
-      const newOrder = [...prevOrder, vid]
-      setTemplate((t) => ({ ...t, exercise_order: newOrder }))
-      await templatesApi.update(template.id, { exercise_order: newOrder })
-    }
-  }
-
   const handleStart = async () => {
-    if (active) {
-      navigate(`/workout/${active.id}`)
-      return
-    }
     setStarting(true)
-    try {
-      const created = await sessions.start({
-        name: template.name,
-        template_id: template.id,
-        exercise_order: template.exercise_order || [],
-      })
-      navigate(`/workout/${created.id}`)
-    } catch (err) {
-      setError(err.message)
-      setStarting(false)
-    }
+    const id = await startFromTemplate(template, active, setError)
+    if (id) navigate(`/workout/${id}`)
+    else setStarting(false)
   }
 
   if (loading) {
-    return (
-      <div className="flex min-h-svh items-center justify-center bg-background text-muted-foreground">
-        Loading…
-      </div>
-    )
+    return <ScreenLoading full />
   }
 
   return (
@@ -192,11 +140,7 @@ export default function TemplateEditor() {
       </div>
 
       <div className="flex flex-col gap-3 px-[18px] pt-[14px] pb-8">
-        {error && (
-          <div className="rounded-[14px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
-            {error}
-          </div>
-        )}
+        <ErrorBanner error={error} />
 
         <input
           value={name}

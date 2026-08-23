@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizePhrase, canonicalLabel, isPlausibleExercise, suggest, findLocal,
-  muscleSetCounts, MUSCLE_TO_PART, MUSCLES, BODY_PARTS, ROLE_WEIGHT,
+  muscleSetCounts, ROLE_WEIGHT,
 } from './resolver.js';
 
 // A registry shaped the way the AI resolver stores things.
@@ -93,21 +93,6 @@ describe('suggest', () => {
 describe('canonicalLabel', () => {
   it('title-cases the movement for display', () => {
     expect(canonicalLabel('romanian deadlift')).toBe('Romanian Deadlift');
-  });
-});
-
-describe('muscle vocabulary', () => {
-  it('maps every muscle to a body part', () => {
-    for (const m of MUSCLES) {
-      expect(BODY_PARTS).toContain(MUSCLE_TO_PART[m]);
-    }
-  });
-
-  it('has a home for shoulders and core', () => {
-    // The old chest/back/arms/legs grouping filed delts under arms and dropped core, which
-    // made per-muscle volume dishonest for anyone training shoulders directly.
-    expect(MUSCLE_TO_PART['side delts']).toBe('shoulders');
-    expect(MUSCLE_TO_PART.abs).toBe('core');
   });
 });
 

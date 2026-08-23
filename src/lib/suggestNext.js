@@ -16,6 +16,7 @@
  * Pure: everything is passed in already loaded. No network, no clock beyond `now`, which is
  * injectable so the reasons are testable.
  */
+import { canonicalLabel } from './resolver.js';
 
 /** 1st, 2nd, 3rd… for "usually 3rd". */
 function ordinal(n) {
@@ -66,13 +67,12 @@ export function suggestNext({
     out.push({ variant, reason });
   };
 
+  // canonicalLabel, not a second title-caser. The local copy this replaces had already
+  // drifted: it lacked the 'ab' exception, so "ab wheel" rendered as "ab Wheel" in a reason
+  // string sitting next to the same lift shown as "Ab Wheel" everywhere else.
   const nameOf = (id) => {
     const v = byId.get(id);
-    if (!v) return 'that lift';
-    return v.base
-      .split(' ')
-      .map((w) => (w.length <= 2 ? w : w.charAt(0).toUpperCase() + w.slice(1)))
-      .join(' ');
+    return v ? canonicalLabel(v.base) : 'that lift';
   };
 
   // ---- 1. template remainder ---------------------------------------------------------
