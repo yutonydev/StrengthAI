@@ -24,7 +24,12 @@
  */
 
 // Bump to invalidate everything. Old caches are deleted on activate.
-const VERSION = 'v1'
+//
+// v1 -> v2: v1 cached whatever a navigation returned, including error pages. On a host with
+// no SPA rewrite that meant a deep link's 404 got stored AS the offline shell, so going
+// offline served a 404 instead of the app. Bumping the version is what evicts that poisoned
+// entry from clients that already have it — the fix below stops it happening again.
+const VERSION = 'v2'
 const SHELL = `strengthai-shell-${VERSION}`
 const ASSETS = `strengthai-assets-${VERSION}`
 const KEEP = [SHELL, ASSETS]
@@ -66,10 +71,23 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
-        .then((response) => {
-          const copy = response.clone()
-          caches.open(SHELL).then((cache) => cache.put(SHELL_URL, copy))
-          return response
+        .then(async (response) => {
+          // ONLY store a successful document. A fetch that resolves is not a fetch that
+          // worked: a 404 or a 500 is a perfectly ordinary resolved Response, and caching one
+          // here overwrites the offline shell with an error page — which is exactly what
+          // happened in v1 against a host with no SPA rewrite.
+          if (response.ok) {
+            const copy = response.clone()
+            caches.open(SHELL).then((cache) => cache.put(SHELL_URL, copy))
+            return response
+          }
+
+          // Non-ok navigation. In a SPA every path is the client router's to resolve, so a
+          // cached shell is a better answer than the host's error page — this is what
+          // `historyApiFallback` does in dev. Falls through to the real response when there
+          // is no shell to serve, so a genuine failure is still visible.
+          const shell = await caches.match(SHELL_URL)
+          return shell ?? response
         })
         .catch(async () => {
           // Offline. Serve the shell and let the router take it from there — the SPA's own
