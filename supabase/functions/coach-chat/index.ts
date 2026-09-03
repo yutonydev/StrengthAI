@@ -18,6 +18,9 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { json, preflight, userIdFrom } from '../_shared/http.ts';
 import { capFromEnv, checkCap, dayKey } from '../_shared/usage.ts';
+// Optional workspace header included here — see _shared/anthropic.ts for why an
+// identity-linked key needs it and a workspace-scoped one must not get it.
+import { anthropicHeaders } from '../_shared/anthropic.ts';
 
 // Pinned to a version alias, never `-latest`. `claude-3-5-haiku-latest` broke the resolver
 // once already: the dated model behind it retired, calls started 404ing, and because a 404
@@ -385,11 +388,7 @@ Deno.serve(async (req) => {
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
+      headers: anthropicHeaders(apiKey, Deno.env.get('ANTHROPIC_WORKSPACE_ID')),
       body: JSON.stringify({ model: MODEL, max_tokens: MAX_TOKENS, system: SYSTEM, tools: TOOLS, messages }),
     });
 

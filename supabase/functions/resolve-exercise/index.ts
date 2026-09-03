@@ -17,6 +17,9 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { json, preflight, userIdFrom } from '../_shared/http.ts';
 import { capFromEnv, checkCap, monthStartKey } from '../_shared/usage.ts';
+// Optional workspace header included here — see _shared/anthropic.ts for why an
+// identity-linked key needs it and a workspace-scoped one must not get it.
+import { anthropicHeaders } from '../_shared/anthropic.ts';
 // The vocabulary and the cache-key normalization, shared verbatim with the browser —
 // see _shared/vocab.ts for why a second copy here was a liability rather than a
 // convenience. `norm` below stays local: it is a looser cleanup for model output, not
@@ -188,11 +191,10 @@ async function handleBackfill(
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') ?? '',
-      'anthropic-version': '2023-06-01',
-    },
+    headers: anthropicHeaders(
+      Deno.env.get('ANTHROPIC_API_KEY') ?? '',
+      Deno.env.get('ANTHROPIC_WORKSPACE_ID')
+    ),
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 2000,
@@ -332,11 +334,7 @@ Deno.serve(async (req) => {
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
+      headers: anthropicHeaders(apiKey, Deno.env.get('ANTHROPIC_WORKSPACE_ID')),
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 500,
