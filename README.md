@@ -173,9 +173,15 @@ Optional secrets, all with sane defaults: `RESOLVER_MODEL`, `COACH_CHAT_MODEL`,
 never `-latest`. A retired dated model once made the whole AI layer read as bad wifi for
 days.
 
+`ANTHROPIC_WORKSPACE_ID` is optional and depends on the kind of key. An identity-linked key
+belongs to a person rather than a workspace, so the API refuses it with a 400 until the
+workspace is named in an `anthropic-workspace-id` header; a workspace-scoped key must *not*
+receive that header. Set the secret and it is sent, leave it unset and it is omitted, so
+either kind of key works without a code change.
+
 ```bash
 npm run dev     # http://localhost:5173
-npm test        # 112 tests, no database or network needed
+npm test        # 118 tests, no database or network needed
 npm run lint
 npm run build
 ```

@@ -6,16 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **working, deployed app**, live at
 [strength-ai.vercel.app](https://strength-ai.vercel.app). React + Vite · Supabase
-(Postgres, auth, edge functions) · installable as a PWA. Phases 0–7 of `BUILD-PLAN.md`
-are done, so treat that file as history rather than a task list — `README.md` is the
-accurate description of what exists.
+(Postgres, auth, edge functions) · installable as a PWA. `README.md` is the accurate
+description of what exists; this file is the accurate description of how to change it.
 
 ## Commands
 
 ```bash
 npm install
 npm run dev     # http://localhost:5173
-npm test        # vitest — 112 tests, no database or network needed
+npm test        # vitest — 118 tests, no database or network needed
 npm run lint    # oxlint; currently warnings-only, no errors
 npm run build
 ```
@@ -23,9 +22,9 @@ npm run build
 Single test file: `npx vitest run src/lib/resolver.test.js`.
 
 Tests live in `src/lib/{resolver,coach,suggestNext}.test.js`,
-`supabase/functions/_shared/usage.test.ts`, and `src/pages/pages.smoke.test.js`. All are
-plain function tests — no DB, no mocks, no setup. They should pass before any UI work is
-considered done.
+`supabase/functions/_shared/{usage,anthropic}.test.ts`, and
+`src/pages/pages.smoke.test.js`. All are plain function tests — no DB, no mocks, no
+setup. They should pass before any UI work is considered done.
 
 The smoke test only imports every page and shared module and checks it exports a component.
 It renders nothing. It exists because the routes are lazy (`App.jsx`), so a broken import no
@@ -50,6 +49,13 @@ Optional secrets with sane defaults: `RESOLVER_MODEL`, `COACH_CHAT_MODEL`,
 `RESOLVER_MONTHLY_CAP` (400), `COACH_CHAT_DAILY_CAP` (40). Pin models to a version
 alias, never `-latest` — a retired dated model once made the whole AI layer read as bad
 wifi for days.
+
+`ANTHROPIC_WORKSPACE_ID` is optional, and which way it goes is decided by the key, not by
+preference: an identity-linked key belongs to a person rather than a workspace, so the API
+refuses it with a 400 until the workspace is named in an `anthropic-workspace-id` header. A
+workspace-scoped key must *not* receive that header. Set the secret and it is sent, leave it
+unset and it is omitted — `_shared/anthropic.ts` builds the headers for both cases, so
+swapping one kind of key for the other never needs a code change or a redeploy.
 
 ## Architecture
 
@@ -126,6 +132,10 @@ vowel-free.
 touched and were confidently wrong in ways nobody could see. If the model gets something
 wrong, fix the prompt or the vocabulary.
 
+**Don't pre-seed `exercise_aliases` with hand-written rows either.** Same mistake wearing a
+different hat, and worse: a wrong seed row is served free and forever, and because it hits
+before the model is ever asked, no later call can correct it.
+
 ### The coach (`src/lib/coach.js`)
 
 Deliberately conservative: every function either has data-backed grounds to claim
@@ -182,7 +192,7 @@ something, or explicitly declines to. Patterns to preserve when extending:
 - **Store kilograms, display the preference.** All conversion through `units.js`.
 - **RLS is the security boundary.** New table ⇒ RLS + policy.
 - **Never swallow errors** in `db.js`.
-- **Don't add an alias list to the resolver.**
+- **Don't add an alias list to the resolver, or pre-seed its cache.**
 - **Weight, reps and RIR are entered, never inferred.** No defaulting to the last set, the
   best set, or a hardcoded value. Fabricated effort ratings feed the plateau engine, which
   is the one thing the product cannot get wrong.
