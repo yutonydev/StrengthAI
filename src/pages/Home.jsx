@@ -310,9 +310,15 @@ export default function Home() {
           ))}
         </div>
       ) : (
-        <div className="mt-[10px] w-full rounded-[14px] border border-dashed border-border px-[18px] py-[18px] text-center text-[13px] text-muted-foreground">
+        // The whole card is the control, not just the four accent-coloured words. Those
+        // words were styled exactly like every real link in the app and did nothing, which
+        // made the only call to action a new lifter sees a dead one.
+        <button
+          onClick={() => navigate('/settings')}
+          className="mt-[10px] w-full rounded-[14px] border border-dashed border-border px-[18px] py-[18px] text-center text-[13px] text-muted-foreground"
+        >
           No weekly goals yet — <span className="text-primary">set them in Settings</span>
-        </div>
+        </button>
       )}
     </div>
   )

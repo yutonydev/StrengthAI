@@ -380,10 +380,17 @@ export default function Coach() {
     setGoalSheetOpen(true)
   }
 
-  const exercisesWithSets = useMemo(() => {
-    const used = new Set(allSets.map((s) => s.variant_id))
-    return variantList.filter((v) => used.has(v.id)).slice(0, 8)
-  }, [allSets, variantList])
+  /**
+   * Every lift in the registry, not just the ones with logged sets.
+   *
+   * Filtering to lifts that already had sets meant a new lifter tapping "Add" got a sheet
+   * with an empty picker, a disabled button and no explanation — the empty state one card
+   * above actively routed them into it. Setting a target for a lift you are about to start
+   * is a reasonable thing to want, and nothing downstream needs history to exist:
+   * `projectGoal` already returns `projectable: false` with a stated reason, and GoalCard
+   * renders that honestly rather than inventing a projection.
+   */
+  const goalCandidates = useMemo(() => variantList.slice(0, 8), [variantList])
 
   if (loading) {
     return <ScreenLoading />
@@ -586,7 +593,7 @@ export default function Coach() {
       <GoalSheet
         open={goalSheetOpen}
         onOpenChange={setGoalSheetOpen}
-        variants={exercisesWithSets}
+        variants={goalCandidates}
         unit={unit}
         initial={goalSheetInitial}
         onSave={handleSaveGoal}

@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, ArrowUp, CalendarPlus, Dumbbell, Sparkles } from 'lucide-react'
 import { askCoach, loadCoachFacts } from '@/api/coachChat'
+import { sets as setsApi } from '@/api/db'
+import { useQuery } from '@/hooks/useQuery'
+import { qk } from '@/api/queryCache'
 import { ErrorBanner } from '@/components/ScreenState'
 import { CHAT_KEY } from '@/lib/localState'
 
@@ -18,12 +21,26 @@ import { CHAT_KEY } from '@/lib/localState'
  * looks right.
  */
 
-// Two questions about their own training, two about training in general — the opening
-// screen is where a lifter learns which kinds of thing this can answer.
-const STARTERS = [
+/**
+ * The opening screen is where a lifter learns which kinds of thing this can answer, so the
+ * suggestions have to be answerable BY THEM.
+ *
+ * Two of these used to ask about the lifter's own history unconditionally. On a new account
+ * that is a prompt to spend a model call being told there is no data — the most prominent
+ * thing on the screen, and the one least likely to work. So the set now depends on whether
+ * anything has been logged.
+ */
+const STARTERS_WITH_HISTORY = [
   'Why has my bench stalled?',
   'Am I doing enough back volume?',
   'Build me a push day',
+  'How close to failure should I train?',
+]
+
+const STARTERS_NEW = [
+  'How do I know when to add weight?',
+  'How much volume does a muscle need?',
+  'What does RIR actually measure?',
   'How close to failure should I train?',
 ]
 
@@ -121,6 +138,12 @@ function ActionCard({ toolCall, onOpen }) {
 
 export default function CoachChat() {
   const navigate = useNavigate()
+  // Read through the shared cache — Home and Progress already hold this key, so on any
+  // warm cache picking the right starters costs nothing. `loading` is deliberately not
+  // gated on: the general set is the safe default while the count is unknown.
+  const setsQ = useQuery(qk.sets, () => setsApi.all())
+  const starters = (setsQ.data ?? []).length > 0 ? STARTERS_WITH_HISTORY : STARTERS_NEW
+
   const [messages, setMessages] = useState(loadThread)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -226,7 +249,7 @@ export default function CoachChat() {
               <Sparkles className="h-[15px] w-[15px] text-primary" />
               Try asking
             </div>
-            {STARTERS.map((q) => (
+            {starters.map((q) => (
               <button
                 key={q}
                 onClick={() => send(q)}

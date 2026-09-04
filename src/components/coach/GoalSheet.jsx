@@ -44,6 +44,14 @@ export function GoalSheet({ open, onOpenChange, variants, unit, initial, onSave 
         <div className="mt-4 mb-2 text-[10px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
           Lift
         </div>
+        {/* The picker now offers the whole registry, so this only fires on a brand-new
+            account with nothing in it at all. Without it the sheet showed a "Lift" heading
+            above nothing, with no way to tell whether that was a bug or a missing step. */}
+        {variants.length === 0 && (
+          <div className="rounded-[14px] border border-dashed border-border px-[13px] py-[14px] text-[12.5px] leading-[1.5] text-muted-foreground">
+            No exercises yet. Describe one in a workout first — then you can set a target for it.
+          </div>
+        )}
         <div className="flex flex-wrap gap-[6px]">
           {variants.map((v) => {
             const isSel = v.id === variantId
@@ -93,13 +101,24 @@ export function GoalSheet({ open, onOpenChange, variants, unit, initial, onSave 
           </div>
         )}
 
-        <button
-          onClick={handleSave}
-          disabled={submitting || !variantId || !target}
-          className="mt-[14px] w-full rounded-[14px] bg-primary py-[14px] text-center text-[14px] font-bold text-primary-foreground disabled:opacity-60"
-        >
-          Track this goal
-        </button>
+        {/* SetLoggerSheet and the exclude-session sheet both offer an explicit way out; this
+            one did not, so a sheet you could not act in was also a sheet with no visible
+            escape. Backdrop and Escape always worked — the affordance was the missing part. */}
+        <div className="mt-[14px] flex gap-2">
+          <button
+            onClick={() => onOpenChange(false)}
+            className="flex-1 rounded-[14px] border border-border py-[14px] text-center text-[13px] text-muted-foreground"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={submitting || !variantId || !target}
+            className="flex-[2] rounded-[14px] bg-primary py-[14px] text-center text-[14px] font-bold text-primary-foreground disabled:opacity-60"
+          >
+            Track this goal
+          </button>
+        </div>
       </div>
     </Sheet>
   )
