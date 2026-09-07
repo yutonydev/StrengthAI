@@ -1,34 +1,12 @@
-/**
- * Offline shell for the PWA.
- *
- * The app was installable but had no service worker at all, which meant that opening it
- * without a connection got a browser error page. That contradicted the resolver's whole
- * design: `unresolved` exists — and deliberately never blocks a log — because the lifter is
- * standing at a rack on bad gym wifi. None of that helps if the app itself will not boot.
- *
- * STRATEGY, and why each half is the way round it is:
- *
- * - Navigations (the HTML) are NETWORK-FIRST. This is the one that can ruin a deployed app:
- *   a cache-first shell pins whatever index.html the browser saw first, and every future
- *   deploy points at asset hashes that HTML has never heard of. Going to the network first
- *   means a working connection always sees the current build, and the cached copy is only
- *   ever a fallback for being offline.
- *
- * - Hashed build assets are CACHE-FIRST. Safe precisely because Vite puts a content hash in
- *   the filename: the bytes behind `/assets/index-ad-vqM2A.js` can never change, so a hit is
- *   always correct and a new build simply asks for a new name.
- *
- * NOT cached, ever: anything cross-origin. Supabase reads carry the lifter's auth and their
- * answers are per-user; the model calls cost money and must not be replayed. Only same-origin
- * GETs are touched here, so all of that falls straight through to the network untouched.
- */
+// Offline shell for the PWA, so the app boots on bad gym wifi. Navigations are
+// NETWORK-FIRST: a cache-first shell pins whatever index.html was seen first, and every
+// later deploy points at asset hashes that HTML never heard of. Hashed build assets are
+// CACHE-FIRST, safe because Vite puts a content hash in the filename. Cross-origin is never
+// cached — Supabase reads carry auth, and model calls must not be replayed.
 
-// Bump to invalidate everything. Old caches are deleted on activate.
-//
-// v1 -> v2: v1 cached whatever a navigation returned, including error pages. On a host with
-// no SPA rewrite that meant a deep link's 404 got stored AS the offline shell, so going
-// offline served a 404 instead of the app. Bumping the version is what evicts that poisoned
-// entry from clients that already have it — the fix below stops it happening again.
+// Bump to invalidate everything; old caches are deleted on activate. v1 -> v2: v1 cached
+// whatever a navigation returned, so a deep link's 404 got stored AS the offline shell.
+// The bump evicts that from clients that already have it; the fix below prevents a repeat.
 const VERSION = 'v2'
 const SHELL = `strengthai-shell-${VERSION}`
 const ASSETS = `strengthai-assets-${VERSION}`

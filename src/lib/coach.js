@@ -1,10 +1,5 @@
-/**
- * Coaching analysis. Pure functions over logged sets — no network, no model calls.
- *
- * Everything here is deliberately conservative: it only claims something when the
- * data supports it, and it says why. That was the strongest part of the Base44
- * version and it survives the rebuild intact.
- */
+// Coaching analysis. Pure functions over logged sets — no network, no model calls.
+// Deliberately conservative: it only claims something when the data supports it.
 import { canonicalLabel, muscleSetCounts } from './resolver.js';
 import { display } from './units.js';
 
@@ -14,22 +9,9 @@ export const e1rm = (weightKg, reps) => (weightKg || 0) * (1 + (reps || 0) / 30)
 /** How many recent sets count as "now" for a goal. Roughly the last two or three sessions. */
 const CURRENT_WINDOW = 9;
 
-/**
- * Where a lift stands today: the best estimated 1RM across the last few sets.
- *
- * Best-of-a-window rather than the single latest set, because the newest set is often a
- * back-off or a warmup and would report a lifter as having gone backwards on a day they
- * hit a PR earlier in the session.
- *
- * This existed in four places — the goal card, both goal paths in the Insights screen, and
- * the facts payload — each re-deriving `.slice(-9)` and `Math.max(...map(e1rm))` by hand.
- * They agreed, but the number drives a progress bar, a projection, the "target reached"
- * flip that writes to the database, and what the chat coach quotes back. Four copies of the
- * definition of "where you are now" is four chances for those to start disagreeing.
- *
- * @param {Array} sets rows for ONE variant, in any order
- * @returns {number} kilograms, 0 when there is no history
- */
+// Where a lift stands today: best e1RM across the last few sets, not the latest set —
+// the newest set is often a back-off and would report a PR day as going backwards.
+// Shared because four screens derived it by hand and it drives a database write.
 export function currentE1rm(sets = []) {
   const recent = [...sets]
     .sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
@@ -37,37 +19,14 @@ export function currentE1rm(sets = []) {
   return recent.length ? Math.max(...recent.map((s) => e1rm(s.weight_kg, s.reps))) : 0;
 }
 
-/**
- * The back-off fraction applied to a plateaued lift's matched load.
- *
- * Shared because it is quoted and then acted on in two different files: PlateauCard renders
- * "drop to N" and Coach.jsx writes that target into coach_plans. If those two drifted the
- * app would promise one weight and program another — and the lifter would only find out at
- * the rack, with the card no longer on screen to compare against.
- */
+// Back-off fraction for a plateaued lift. Shared: PlateauCard renders it and Coach.jsx
+// writes it into coach_plans, so drift would promise one weight and program another.
 export const BACKOFF_FACTOR = 0.88;
 
-/**
- * RIR at matched load, one point per session.
- *
- * The signal: hold weight × reps constant and watch effort. If RIR falls while the
- * load is unchanged, the same work is costing more — fatigue, not weakness. Comparing
- * raw RIR across different loads tells you nothing, which is why this only uses the
- * lifter's most-repeated weight × reps combination for that variant.
- *
- * @param {Array} sets     rows for ONE variant: { session_id, weight_kg, reps, rir }
- * @param {Object} dates   { [session_id]: ISO date string }
- * @param {Set}   excluded session ids the lifter excluded from analysis
- * @returns {{ series: Array<{sessionId,date,rir}>, modal: {weightKg,reps}|null }}
- *
- * `series` is chronological and empty when there is nothing honest to say.
- *
- * `modal` is the weight × reps the series was measured at, and callers need it. The load a
- * plateau refers to is the modal one, NOT the most recently logged set — those differ every
- * time the lifter deloads, takes a back-off set, or changes rep scheme. Reporting the latest
- * set as "the load you stalled at" also propagates into the back-off recommendation, which is
- * computed as a percentage of it, so the wrong number becomes wrong programming advice.
- */
+// RIR at matched load, one point per session. Holding weight × reps constant is what
+// makes effort comparable — raw RIR across different loads says nothing. `modal` is the
+// weight × reps measured at, NOT the latest set; the back-off recommendation is a
+// percentage of it, so the wrong load becomes wrong programming advice.
 export function matchedRirSeries(sets = [], dates = {}, excluded = new Set()) {
   const nothing = { series: [], modal: null };
   const usable = sets.filter((s) => s.rir != null && !excluded.has(s.session_id));
@@ -105,18 +64,11 @@ export function matchedRirSeries(sets = [], dates = {}, excluded = new Set()) {
   return { series, modal: { weightKg, reps } };
 }
 
-/**
- * Is this lift stalled?
- * Needs at least three matched sessions and a full point of RIR lost. A single bad
- * session is not a plateau, and half a point is inside the noise of self-reported RIR.
- */
+// Is this lift stalled? Needs 3+ matched sessions and a full RIR point lost; half a
+// point is inside the noise of self-reported RIR.
 export function detectPlateau(series = []) {
-  // Every key the full verdict carries is present here too, valued null where there is
-  // genuinely nothing to say. The short branch used to return {stalled, reason} alone, and
-  // `buildCoachFacts` ships this object straight to the chat coach — which then saw a
-  // verdict missing `stability`, `drop` and `watch` entirely, and had to guess whether the
-  // absence meant "stable" or "unknown". A stated null is a fact it can read; a missing key
-  // is a gap it fills in.
+  // Every key of the full verdict, valued null. buildCoachFacts ships this straight to the
+  // chat coach; a missing key is a gap it guesses at, a stated null is a fact it reads.
   if (series.length < 3) {
     return {
       stalled: false,
@@ -141,16 +93,8 @@ export function detectPlateau(series = []) {
   };
 }
 
-/**
- * Program-level check.
- *
- * The Base44 version diagnosed each exercise alone, so four lifts stalling in the same
- * fortnight became four unrelated plateaus. Across different movement patterns that is
- * almost never four problems — it's recovery. This looks for that.
- *
- * @param {Array} perVariant [{ variantId, name, series }]
- * @param {Array} readiness  [{ created_at, score }] chronological
- */
+// Program-level check. Four lifts stalling in a fortnight across different movement
+// patterns is almost never four problems — it is recovery. Base44 missed this.
 export function detectProgramPattern(perVariant = [], readiness = []) {
   const stalled = perVariant
     .map((v) => ({ ...v, verdict: detectPlateau(v.series) }))
@@ -158,10 +102,8 @@ export function detectProgramPattern(perVariant = [], readiness = []) {
 
   if (stalled.length < 2) return { detected: false, stalled };
 
-  // Readiness moving the same way turns a coincidence into a diagnosis. Over the WHOLE
-  // series rather than readinessTrend's default recent window: a program-level pattern is a
-  // claim about the block, so the comparison has to span the block. The half-split maths
-  // itself is shared rather than repeated inline, which is what it used to be.
+  // Readiness moving the same way turns a coincidence into a diagnosis. Whole series, not
+  // the recent window: a claim about the block has to span the block.
   const trend = readinessTrend(readiness, readiness.length);
 
   return {
@@ -172,16 +114,10 @@ export function detectProgramPattern(perVariant = [], readiness = []) {
   };
 }
 
-/**
- * Goal projection.
- *
- * Straight-line extrapolation says "+2 lb/week forever", which is false — gains
- * decelerate as you approach your ceiling. So this returns the linear number AND a
- * decay-adjusted range, and refuses to project at all when the rate isn't positive.
- *
- * The decay multipliers (1.4×–2.1×) are a deliberate blunt instrument. A per-lifter
- * model would be better, and needs more data than a new user has.
- */
+// Goal projection. Straight-line extrapolation is false — gains decelerate near a
+// ceiling — so this returns the linear number AND a decay-adjusted range, and refuses to
+// project when the rate is not positive. The 1.4×–2.1× multipliers are a blunt
+// instrument; a per-lifter model needs more data than a new user has.
 export function projectGoal({ currentKg, targetKg, history = [], weeksObserved = 8 }) {
   if (!history.length) return { projectable: false, reason: 'no history' };
 
@@ -229,13 +165,8 @@ export function sessionVolumeKg(sets = []) {
 
 const DAY = 864e5;
 
-/**
- * The muscles a variant trains, tolerating the pre-004 row shape.
- *
- * Variants resolved before migration 004 carry a single `muscle` string instead of the
- * `muscles` array. Treating those as untagged would silently drop the lifts someone has
- * been training longest out of every per-muscle total — exactly the rows that matter most.
- */
+// The muscles a variant trains, tolerating pre-004 rows that carry a single `muscle`
+// string. Treating those as untagged would drop the longest-trained lifts from every total.
 function musclesOf(variant) {
   if (Array.isArray(variant?.muscles) && variant.muscles.length) return variant.muscles;
   return variant?.muscle ? [{ name: variant.muscle, role: 'primary' }] : [];
@@ -248,23 +179,10 @@ function normalizedById(variants) {
   return out;
 }
 
-/**
- * Per-muscle volume for the last 7 days against the 4 weeks before it.
- *
- * Rolling 7 days rather than the calendar week, deliberately: fatigue does not reset on
- * Sunday, and a calendar window shows an empty map every Monday morning.
- *
- * The point of tagging muscles at resolve time is this function. Bench, dips and pushdowns
- * all bill the triceps, and no per-exercise view can see that — which is why a bench press
- * can stall for reasons that have nothing to do with the bench press.
- *
- * @param {object} input
- * @param {Array}  input.variants
- * @param {Array}  input.sets              every logged set
- * @param {Array}  input.sessions          for set → date
- * @param {Array}  input.stalledVariantIds variants whose effort is climbing at matched load
- * @param {number} input.now               injectable so the window is testable
- */
+// Per-muscle volume, last 7 days against the 4 weeks before. Rolling, not calendar:
+// fatigue does not reset on Sunday. This is why muscles are tagged at resolve time —
+// bench, dips and pushdowns all bill the triceps, and no per-exercise view sees that.
+// `now` is injectable so the window is testable.
 export function muscleVolume({
   variants = [],
   sets = [],
@@ -295,8 +213,8 @@ export function muscleVolume({
   // Divided by 4 because the baseline window is four times as long as the current one.
   const baseline = round(muscleSetCounts(between(baseFrom, wkStart), byId), (n) => Math.round((n / 4) * 10) / 10);
 
-  // Which muscles are being trained by a lift whose effort is climbing. Primary only —
-  // a secondary contribution is too small to explain why a lift stopped moving.
+  // Muscles trained by a lift whose effort is climbing. Primary only — a secondary
+  // contribution is too small to explain a stall.
   const hotMuscles = {};
   for (const id of new Set(stalledVariantIds)) {
     const v = byId[id];
@@ -340,16 +258,14 @@ export function muscleVolume({
     .filter((r) => r.sets > 0 || r.tag === 'untrained')
     .sort((a, b) => Number(b.climbing) - Number(a.climbing) || b.ratio - a.ratio);
 
-  // Rank by how many stalling lifts share the muscle, not by set count. Three lifts
-  // converging on one muscle is the finding; a high-volume muscle with one stalled lift
-  // is just a busy muscle.
+  // Ranked by how many stalling lifts share the muscle, not by set count: three lifts
+  // converging is the finding, one stalled lift on a high-volume muscle is not.
   const candidates = rows
     .filter((r) => r.climbingLifts.length >= 2)
     .sort((a, b) => b.climbingLifts.length - a.climbingLifts.length || b.sets - a.sets);
 
-  // Only call it a concentration when volume is ACTUALLY elevated. Shared stalls on a
-  // muscle doing LESS work than usual is the opposite finding, and telling someone to cut
-  // volume that is already down would be actively wrong.
+  // Only a concentration when volume is actually elevated. Shared stalls on a muscle doing
+  // less work is the opposite finding, and cutting volume that is already down is wrong.
   const shared = candidates.find((r) => r.ratio >= 1.15) ?? null;
   const sharedLow = shared ? null : candidates[0] ?? null;
 
@@ -377,29 +293,17 @@ export function readinessTrend(readiness = [], window = 8) {
 /** A note the model reads verbatim is a note that can be long. Cap it. */
 const NOTE_CAP = 400;
 
-/**
- * Which variants reach the model.
- *
- * Every chat turn ships this payload, so a registry that only ever grows would make every
- * question slowly more expensive for exercises the lifter abandoned years ago. But trimming
- * is the more dangerous direction: an exercise the model cannot see is one it will confidently
- * say the lifter does not have. So the rule is generous, and whatever it drops is counted.
- */
+// Which variants reach the model. A registry that only grows makes every question more
+// expensive, but trimming is the more dangerous direction: an exercise the model cannot
+// see is one it will confidently say the lifter does not have. Generous, and it counts
+// whatever it drops.
 const RECENT_DAYS = 90;
 const TOP_BY_USES = 30;
 
-/**
- * Everything the chat coach is allowed to know, computed here rather than queried there.
- *
- * The model never touches the database. It gets this object and nothing else, which is
- * what makes "cite the numbers you used" enforceable — every figure it can quote was
- * computed by a tested function above, so a fabricated number is one the lifter can catch
- * by looking at the same screens.
- *
- * Weights are carried in both kg (storage truth) and the lifter's display unit, because
- * asking a model to convert is asking it to do arithmetic it is bad at, and a wrong number
- * in a coaching answer is worse than no answer.
- */
+// Everything the chat coach is allowed to know. The model never touches the database, so
+// every figure it quotes came from a tested function above and the lifter can check it on
+// their own screens. Weights carry both kg and display unit — asking a model to convert is
+// asking it to do arithmetic it is bad at.
 export function buildCoachFacts({
   variants = [],
   sets = [],
@@ -414,8 +318,7 @@ export function buildCoachFacts({
   const datesBySession = {};
   for (const s of sessions) datesBySession[s.id] = s.started_at;
 
-  // Built once rather than a `variants.find(...)` inside the goals map below, which was a
-  // linear scan of the whole registry per goal.
+  // Built once; a `variants.find()` per goal was a linear scan of the whole registry.
   const variantsById = new Map(variants.map((v) => [v.id, v]));
 
   const setsByVariant = new Map();
@@ -426,9 +329,8 @@ export function buildCoachFacts({
 
   const chrono = (rows) => [...rows].sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at));
 
-  // Analysis runs over the whole history, not the trimmed list below. The cap is about how
-  // much is worth sending, and a plateau is still a plateau whether or not its lift made the
-  // cut — detectProgramPattern in particular needs every stalling lift to see a program.
+  // Runs over the whole history, not the trimmed list below: the cap is about what is worth
+  // sending, and detectProgramPattern needs every stalling lift to see a program.
   const analysed = variants
     .filter((v) => setsByVariant.has(v.id))
     .map((v) => {
@@ -444,8 +346,7 @@ export function buildCoachFacts({
         sets: rows.length,
         matchedSessions: series.length,
         plateau: detectPlateau(series),
-        // The load the plateau verdict refers to. Distinct from lastSet, which is simply the
-        // newest set and is often at a different weight.
+        // The load the verdict refers to — often a different weight than lastSet.
         matchedLoad: modal
           ? { weightKg: modal.weightKg, weight: display(modal.weightKg, unit), reps: modal.reps }
           : null,
@@ -456,8 +357,7 @@ export function buildCoachFacts({
           rir: last.rir ?? null,
           loggedAt: last.logged_at,
         },
-        // Same row as `lastSet` above — chrono() sorts a copy, so calling it twice sorted
-        // the identical array twice for one field.
+        // Same row as lastSet; chrono() sorts a copy, so calling it twice sorted twice.
         lastTrainedAt: last.logged_at,
         // kept out of the payload — the model gets the verdict, not 40 raw points
         series,
@@ -496,9 +396,8 @@ export function buildCoachFacts({
       };
     });
 
-  // Verbatim, because a note is the only place the lifter says something the numbers
-  // cannot. Truncated rather than summarised — a paraphrase here would be the model
-  // inventing context and then reasoning from it.
+  // Verbatim: a note is the only place the lifter says what the numbers cannot. Truncated,
+  // never summarised — a paraphrase is the model inventing context and reasoning from it.
   const notes = [...sessions]
     .filter((s) => s.notes?.trim())
     .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
@@ -527,24 +426,20 @@ export function buildCoachFacts({
     .sort((a, b) => (b.uses || 0) - (a.uses || 0) || trainedAt(b) - trainedAt(a))
     .slice(0, TOP_BY_USES);
 
-  // Union, rather than strictly whichever set is larger. Picking one outright can drop a lift
-  // trained last week purely because it is rare — the same blindness this change exists to
-  // fix. A union is never smaller than either candidate, so the "whichever is larger" floor
-  // still holds.
+  // Union, not whichever set is larger: picking one can drop a lift trained last week just
+  // for being rare — the same blindness this exists to fix.
   const keep = new Set([...recent, ...topUsed].map((v) => v.id));
 
   const exercises = variants
     .filter((v) => keep.has(v.id))
     .map((v) => {
       const a = analysedById.get(v.id);
-      // `series` is dropped on purpose: the model gets the plateau verdict, not 40 raw RIR
-      // points it would be tempted to re-interpret.
+      // `series` dropped: the model gets the verdict, not 40 raw points to re-interpret.
       if (a) {
         const { series: _series, ...rest } = a;
         return rest;
       }
-      // In the registry, never logged. Every history-derived field is present and null rather
-      // than absent, so "no data" is a fact the model reads instead of a gap it fills in.
+      // In the registry, never logged. Fields present and null, so "no data" is a fact.
       return {
         variantId: v.id,
         name: canonicalLabel(v.base),
@@ -573,8 +468,7 @@ export function buildCoachFacts({
       sessionsThisWeek,
     },
     exercises,
-    // Stated explicitly so the model never presents a trimmed list as the whole registry —
-    // the exact mistake this change fixes, reintroduced one level up.
+    // Stated, so the model never presents a trimmed list as the whole registry.
     exercisesOmitted: variants.length - exercises.length,
     program: {
       detected: program.detected,

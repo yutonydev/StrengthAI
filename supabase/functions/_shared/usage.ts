@@ -1,20 +1,6 @@
-/**
- * Usage-cap arithmetic, shared by resolve-exercise and coach-chat.
- *
- * This lives outside both functions and imports nothing, so the code the edge functions run
- * is the code the test suite exercises. That matters here more than usual: the cap this
- * replaces was never tested and, as a result, never fired once.
- *
- * The original read filtered `resolver_usage` on a `created_at` column that does not exist.
- * PostgREST returned an error, `count` came back `undefined`, and `undefined >= 400` is
- * false — so every call was permitted, forever, silently. The matching insert named a
- * `phrase` column that also does not exist and omitted the not-null `day`, so it failed
- * every time too, unchecked. Two broken halves that cancelled into a cap-shaped no-op.
- *
- * The lesson is `checkCap` fails CLOSED. A counter that cannot be read is not evidence of
- * zero usage; it is evidence of nothing, and spending money on it is how the last one went
- * unnoticed for months.
- */
+// Usage-cap arithmetic, shared by both functions and tested. The previous cap read a
+// column that did not exist, so count was undefined, `undefined >= 400` was false, and
+// every call was permitted for months. checkCap therefore fails CLOSED.
 
 export type UsageRow = { calls?: number | null };
 
@@ -27,18 +13,8 @@ export type CapCheck = {
   failed: boolean;
 };
 
-/**
- * Read a cap from an env var, falling back to the hardcoded default when it is missing or
- * malformed.
- *
- * `Number(Deno.env.get(...) ?? '400')` looks harmless and is not: a typo'd secret yields
- * `NaN`, and `sum >= NaN` is false for every possible sum, so the cap silently stops
- * existing and every call bills. That is the same failure shape as the broken `created_at`
- * read — a limit that quietly permits everything, with nothing in the logs.
- *
- * The empty string is treated as unset rather than as zero, because `Number('')` is 0 and a
- * cleared secret should restore the default, not refuse every request.
- */
+// Parsed rather than Number(): a typo'd secret becomes NaN, and `sum >= NaN` is false
+// for every sum, silently disabling the cap.
 export function capFromEnv(raw: string | undefined | null, fallback: number, name: string): number {
   if (raw == null || raw.trim() === '') return fallback;
 
@@ -63,24 +39,15 @@ export function monthStartKey(d: Date = new Date()): string {
   return `${d.toISOString().slice(0, 7)}-01`;
 }
 
-/**
- * Total calls across a set of daily counter rows.
- *
- * Both tables store one row per user per day, so a monthly cap is a sum over at most 31
- * rows rather than a row count — counting rows would cap a heavy user at 31 calls and let
- * a light one run forever.
- */
+// Total calls across daily counter rows. A monthly cap is a sum over at most 31 rows, not a
+// row count — counting rows would cap a heavy user at 31 and let a light one run forever.
 export function sumCalls(rows: UsageRow[] | null | undefined): number {
   return (rows ?? []).reduce((total, r) => total + (Number(r?.calls) || 0), 0);
 }
 
-/**
- * May this user make a billable call?
- *
- * `error` is whatever the usage read returned. Passing it in is the point: the decision and
- * the failure mode live together, so a caller cannot accidentally treat an unreadable
- * counter as an empty one.
- */
+// May this user make a billable call? `error` is whatever the usage read returned; passing
+// it in keeps the decision and the failure mode together, so an unreadable counter can
+// never be mistaken for an empty one.
 export function checkCap(
   rows: UsageRow[] | null | undefined,
   error: unknown,

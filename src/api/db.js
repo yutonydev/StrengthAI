@@ -1,10 +1,5 @@
-/**
- * Supabase data layer — everything that touches the database lives here.
- *
- * Screens call these functions and never see Supabase directly, so swapping the
- * backend later means rewriting one file. That is exactly the mistake the Base44
- * version made in reverse: its SDK calls were sprinkled through every page.
- */
+// Supabase data layer — the only file that touches the database, so swapping the backend
+// later means rewriting one file. Base44 made this mistake in reverse.
 import { createClient } from '@supabase/supabase-js';
 import { clearCache, invalidate, qk } from './queryCache';
 import { clearLocalState } from '@/lib/localState';
@@ -14,15 +9,9 @@ export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-/**
- * Run a write, then refresh the cached reads it invalidates.
- *
- * Invalidation lives here rather than at the call sites on purpose. This is the only
- * file that touches the database, so it is the only place where "what this write
- * changes" is knowable without being remembered — a new screen calling sets.log() gets
- * correct cache behaviour without knowing the cache exists. Refresh happens at the
- * moment of the write, so by the time you reach Progress the data is already fresh.
- */
+// Run a write, then refresh the cached reads it invalidates. Invalidation lives here, not
+// at the call sites: this is the only file that knows what a write changes, so a new screen
+// calling sets.log() gets correct cache behaviour without knowing the cache exists.
 const touches = (keys, run) => async (...args) => {
   const result = await run(...args);
   invalidate(...keys);
@@ -47,12 +36,9 @@ const ok = ({ data, error }) => {
 export const auth = {
   signUp: (email, password) => supabase.auth.signUp({ email, password }).then(ok),
   signIn: (email, password) => supabase.auth.signInWithPassword({ email, password }).then(ok),
-  // Cache is per-user data held in module scope, so it has to go on the way out —
-  // otherwise the next account to sign in on this device renders the previous one's
-  // sessions and sets for a moment before its own reads land.
-  //
-  // localStorage goes with it, and matters more: module scope dies on reload, a stored
-  // chat thread does not. See lib/localState.js for what is held there.
+  // The cache holds per-user data in module scope, so it goes on the way out or the next
+  // account renders the previous one's sessions. localStorage goes with it and matters more:
+  // module scope dies on reload, a stored chat thread does not.
   signOut: async () => {
     const result = await supabase.auth.signOut();
     clearCache();
@@ -79,11 +65,8 @@ export const variants = {
     supabase.from('exercise_variants').select('*').eq('user_id', await uid())
       .order('uses', { ascending: false }).then(ok),
 
-  /**
-   * Create or return the existing variant. `mods` is sorted so the unique index
-   * does the deduping — two clients racing on the same description cannot fork
-   * the trend line.
-   */
+  // Create or return the existing variant. `mods` is sorted so the unique index does the
+  // deduping — two clients racing on one description cannot fork the trend line.
   ensure: async ({
     base, mods = [], muscle, muscles, joint_actions, body_part, source_text,
     resolved_by, load_note, confidence,
@@ -276,11 +259,6 @@ export const reports = {
       .select().single().then(ok),
 };
 
-/*
- * Scale note (issue #1 from the backend review):
- * `sets.all()` pulls the whole history to compute trends client-side. That is correct
- * and fast for one lifter with a few thousand sets. When it stops being fast, the fix
- * is a `variant_stats` table updated by a trigger on insert — rolling RIR, best e1RM,
- * last load per variant — so the client reads a summary row instead of recomputing
- * from scratch. Don't build that until it hurts.
- */
+// Scale note: sets.all() pulls the whole history to compute trends client-side, which is
+// correct and fast for one lifter. When it stops being fast the fix is a `variant_stats`
+// table maintained by an insert trigger. Do not build that until it hurts.

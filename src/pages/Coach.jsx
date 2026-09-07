@@ -85,15 +85,10 @@ export default function Coach() {
 
   const variantById = useVariantMap(variantList)
 
-  // Detection runs client-side, on load and on demand — there is no cron here. Each
-  // pass recomputes plateau/program signals from real sets and only writes a new
-  // coach_recommendations row when the dedup rule says this is a genuinely new episode
-  // (see the load-based re-surfacing rule below).
-  /**
-   * @param {boolean} force `true` for the Scan button, which must re-read rather than reuse
-   *   whatever the cache is holding. The mount pass passes `false`, so it shares the request
-   *   the useQuery hooks above already have in flight instead of doubling every read.
-   */
+  // Detection runs client-side, on load and on demand — there is no cron. Each pass only
+  // writes a coach_recommendations row when the dedup rule says the episode is new.
+  // `force` is true for the Scan button; the mount pass passes false so it shares the
+  // request useQuery already has in flight.
   const runDetection = useCallback(async ({ force = false } = {}) => {
     if (runningRef.current) return
     runningRef.current = true
@@ -131,11 +126,9 @@ export default function Coach() {
       // current, in-progress one, matching the prototype's own w=0..2 loop), upserted
       // so re-opening Coach later in an active week just refreshes its numbers
       const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      // Averages only over rows that actually carry the value. The old version read
-      // `s.rpe ?? 0` and averaged the zeros in, so a week where nobody rated a set reported
-      // "an average RPE of 0" as though every set had been logged at zero effort — a number
-      // the lifter never entered, written into weekly_reports.avg_rpe and shown beside sleep
-      // and readiness tiles that correctly render "—" for exactly the same missing data.
+      // Averaged only over rows that carry the value. The old version read `s.rpe ?? 0` and
+      // averaged the zeros in, so a week where nobody rated a set reported "an average RPE
+      // of 0" — a number the lifter never entered, written into weekly_reports.
       const avg = (arr, f) => {
         const vals = arr.map(f).filter((v) => v != null && Number.isFinite(Number(v))).map(Number)
         if (!vals.length) return null
@@ -380,16 +373,10 @@ export default function Coach() {
     setGoalSheetOpen(true)
   }
 
-  /**
-   * Every lift in the registry, not just the ones with logged sets.
-   *
-   * Filtering to lifts that already had sets meant a new lifter tapping "Add" got a sheet
-   * with an empty picker, a disabled button and no explanation — the empty state one card
-   * above actively routed them into it. Setting a target for a lift you are about to start
-   * is a reasonable thing to want, and nothing downstream needs history to exist:
-   * `projectGoal` already returns `projectable: false` with a stated reason, and GoalCard
-   * renders that honestly rather than inventing a projection.
-   */
+  // Every lift in the registry, not just ones with logged sets: filtering meant a new lifter
+  // tapping "Add" got an empty picker and a disabled button, which the empty state above
+  // actively routed them into. Nothing downstream needs history — projectGoal already
+  // returns `projectable: false` with a stated reason.
   const goalCandidates = useMemo(() => variantList.slice(0, 8), [variantList])
 
   if (loading) {
@@ -450,7 +437,7 @@ export default function Coach() {
         <button
           onClick={() => runDetection({ force: true })}
           disabled={scanning}
-          className="flex items-center gap-[5px] text-[11.5px] font-semibold text-primary disabled:opacity-60"
+          className="flex items-center gap-[5px] py-[6px] text-[11.5px] font-semibold text-primary disabled:opacity-60"
         >
           {scanning ? <Loader2 className="h-[15px] w-[15px] animate-spin" /> : <Radar className="h-[15px] w-[15px]" />}
           {scanning ? 'Scanning…' : 'Scan'}
@@ -522,7 +509,7 @@ export default function Coach() {
             setGoalSheetInitial(null)
             setGoalSheetOpen(true)
           }}
-          className="flex items-center gap-1 text-[11.5px] font-semibold text-primary"
+          className="flex items-center gap-1 py-[6px] text-[11.5px] font-semibold text-primary"
         >
           <Plus className="h-[14px] w-[14px]" />
           Add

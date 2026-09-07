@@ -149,6 +149,7 @@ export default function SessionDetail() {
       >
         <button
           onClick={() => navigate('/')}
+          aria-label="Back to home"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-muted-foreground"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -181,7 +182,7 @@ export default function SessionDetail() {
                   key={s.id}
                   className="flex items-center justify-between border-t border-accent py-[7px] font-mono text-[12.5px]"
                 >
-                  <span className="text-[#5F665F]">{s.n}</span>
+                  <span className="text-muted-foreground">{s.n}</span>
                   <span>{s.line}</span>
                 </div>
               ))}

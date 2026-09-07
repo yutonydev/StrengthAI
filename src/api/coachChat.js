@@ -1,14 +1,7 @@
-/**
- * Chat coach orchestration.
- *
- * Loads everything the coach is allowed to know, computes the facts payload locally with
- * `buildCoachFacts`, and sends it alongside the conversation. The model never queries the
- * database — it sees this object and nothing else, which is what makes the numbers in its
- * answers checkable against the lifter's own Progress screen.
- *
- * Recomputed every turn rather than cached: someone can log a set mid-conversation, and an
- * answer grounded in a stale payload would be wrong in the most confusing way possible.
- */
+// Chat coach orchestration. Computes the facts payload locally and sends it alongside the
+// conversation; the model never queries the database, so its numbers stay checkable against
+// the lifter's own Progress screen. Recomputed every turn — someone can log a set
+// mid-conversation, and a stale payload is wrong in the most confusing way possible.
 import {
   supabase,
   flags as flagsApi,
@@ -44,18 +37,8 @@ export async function loadCoachFacts() {
   });
 }
 
-/**
- * One conversational turn.
- *
- * @param {Array}  messages [{ role: 'user'|'assistant', content }]
- * @param {object} facts    from `loadCoachFacts`
- * @returns {Promise<{
- *   status: 'answered'|'capped'|'unavailable',
- *   text?: string,
- *   toolCall?: { name, input, result },
- *   reason?: string
- * }>}
- */
+// One conversational turn. Returns { status: 'answered'|'capped'|'unavailable', text?,
+// toolCall?: { name, input, result }, reason? }.
 export async function askCoach(messages, facts) {
   try {
     const { data, error } = await supabase.functions.invoke('coach-chat', {

@@ -1,11 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { anthropicHeaders } from './anthropic.ts';
 
-/**
- * These exist for the same reason usage.test.ts does: this logic sits directly in front of
- * every billable model call, and when it is wrong the app fails soft — so nothing on screen
- * tells you, and only the edge-function logs do.
- */
+// Same reason as usage.test.ts: this sits in front of every billable model call, and when
+// it is wrong the app fails soft — nothing on screen says so, only the function logs.
 
 describe('anthropicHeaders', () => {
   it('always sends the three headers the API requires', () => {

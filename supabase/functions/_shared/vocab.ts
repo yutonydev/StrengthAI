@@ -1,31 +1,8 @@
-/**
- * The exercise vocabulary — the single copy, shared by the browser and the edge function.
- *
- * WHY THIS FILE LIVES HERE, under supabase/ rather than src/lib/:
- *
- * These lists have exactly two consumers and they run in different runtimes. The Deno edge
- * function can only import from inside `supabase/functions/`, so that is the only directory
- * both sides can physically reach — the client can import from anywhere, the function
- * cannot. `_shared/` is already the established home for that (see usage.ts). Vite compiles
- * the .ts on the way into the browser bundle; Deno reads it directly.
- *
- * This used to be two hand-maintained copies, one in src/lib/resolver.js and one inlined at
- * the top of resolve-exercise/index.ts. They had already drifted — 'back extension' was
- * listed twice on the client and once on the server — and nothing would have caught it.
- * Drift here is uniquely expensive: the whole point of a fixed vocabulary is that a lift
- * described two different ways six weeks apart lands on ONE trend line, and the server's
- * copy is what the model is actually shown. A term the client believes is canonical but the
- * server has never heard of is a trend line that silently forks.
- *
- * These are convergence aids given to the model, NOT whitelists. A movement missing from
- * VOCAB_BASES still resolves fine. Do not turn any of this into matching logic — see the
- * architecture note in src/lib/resolver.js for what that cost last time.
- */
+// The exercise vocabulary, shared by the browser and the edge function. Lives here
+// because a Deno function can only import from inside supabase/functions/. Two copies
+// had already drifted. Convergence aids for the model, not whitelists.
 
-/**
- * Canonical movement names. The model is told to reuse one of these when it fits and to
- * invent a new name only when nothing does.
- */
+// Reuse one of these when it fits; inventing a new name is fine when none does.
 export const VOCAB_BASES = [
   // chest
   'bench press', 'incline press', 'decline press', 'chest press', 'chest fly', 'push-up', 'dip',
@@ -49,11 +26,7 @@ export const VOCAB_BASES = [
   'clean', 'snatch', 'thruster', 'farmer carry', 'sled push', 'kettlebell swing',
 ];
 
-/**
- * Canonical modifier strings, grouped by the dimension they vary. Grouping matters: the
- * model is told a variant may carry at most one modifier per group, which stops it
- * returning both "seated" and "standing", or both "rope" and "straight bar".
- */
+// At most one modifier per group, which stops "seated" and "standing" both coming back.
 export const VOCAB_MODS: Record<string, string[]> = {
   implement: ['barbell', 'dumbbell', 'cable', 'machine', 'smith machine', 'kettlebell',
     'plate loaded', 'bodyweight', 'band', 'landmine', 'trap bar', 'ez bar', 'safety bar'],
@@ -72,11 +45,7 @@ export const VOCAB_MODS: Record<string, string[]> = {
   side: ['single arm', 'single leg', 'alternating'],
 };
 
-/**
- * Canonical muscle names. This is the vocabulary that makes cross-movement fatigue
- * detection possible — if the model calls it "tricep" one week and "triceps brachii" the
- * next, weekly volume per muscle becomes meaningless.
- */
+// Fixed names, or per-muscle volume across weeks becomes meaningless.
 export const MUSCLES = [
   'pectorals', 'upper chest',
   'lats', 'upper back', 'traps', 'lower back',
@@ -86,26 +55,11 @@ export const MUSCLES = [
   'abs', 'obliques',
 ];
 
-/**
- * Broad grouping, for weekly training goals.
- *
- * Widened from the original chest/back/arms/legs. Shoulders were being filed under arms and
- * core had nowhere to go at all, which made per-muscle volume dishonest the moment anyone
- * trained delts directly.
- */
+// Broad grouping for weekly training goals.
 export const BODY_PARTS = ['chest', 'back', 'shoulders', 'arms', 'legs', 'core'];
 
-/**
- * Joint actions. The third axis after muscle and modifier.
- *
- * Anatomical, not gym vernacular: "vertical push" is a trainer's category, whereas a
- * machine shoulder press is shoulder abduction plus elbow extension. The joint action is
- * what is objectively true about the movement, and it is what accumulates — elbow extension
- * fatigue builds across bench, dips and pushdowns regardless of what those lifts are called.
- *
- * A lift has as many actions as it has working joints, so this is an ARRAY per variant.
- * Isometric trunk demands (anti-extension on a plank) count; passive stabilising does not.
- */
+// Anatomical, never trainer shorthand. An array per variant: elbow extension fatigue
+// accumulates across bench, dips and pushdowns regardless of what they are called.
 export const JOINT_ACTIONS = [
   // glenohumeral
   'shoulder flexion', 'shoulder extension', 'shoulder abduction', 'shoulder adduction',
@@ -124,16 +78,8 @@ export const JOINT_ACTIONS = [
   'anti-extension', 'anti-rotation', 'anti-lateral-flexion',
 ];
 
-/**
- * Lowercase, collapse whitespace, strip punctuation. The alias cache key.
- *
- * Shared for the same reason as the lists: the client sends this phrase and the server looks
- * it up. If the two normalizations ever disagreed, every lookup would miss and every repeat
- * of a phrase would be billed to the model again.
- *
- * Hyphens are kept deliberately — canonical names contain them (`push-up`,
- * `straight-arm pulldown`, `v-bar`) and the cache key has to be stable.
- */
+// The alias cache key. Shared so client and server normalize identically, or every
+// lookup misses. Hyphens kept: canonical names contain them.
 export function normalizePhrase(text: unknown): string {
   return String(text ?? '')
     .toLowerCase()

@@ -11,24 +11,16 @@ const DELETE_AT = -64
 const REORDER_AT = 54
 const SPRING = 'cubic-bezier(.34,1.56,.64,1)'
 
-/**
- * One logged set, swipeable left to delete.
- *
- * Pointer capture is what makes this reliable: once the row captures the pointer, it keeps
- * receiving moves even when the finger travels outside the row's own box, and the browser
- * sends `pointercancel` if the gesture is taken over by a scroll. Window listeners would
- * work too, but they'd have to be added and torn down per row.
- */
+// One logged set, swipeable left to delete. Pointer capture keeps the row receiving moves
+// when the finger leaves its box, and gets `pointercancel` when a scroll takes over.
 function SetRow({ set, unit, onDelete }) {
   const [x, setX] = useState(0)
   const [swiping, setSwiping] = useState(false)
   const startX = useRef(0)
-  // Whether the gesture is live, and how far it has travelled, are tracked in refs and
-  // only mirrored into state for rendering. State is not readable synchronously: a quick
-  // flick delivers pointermove (and sometimes pointerup) in the same React batch as
-  // pointerdown, where `swiping` is still false and `x` still 0 — so a guard or a
-  // threshold check reading state would drop the whole gesture. Slow drags happened to
-  // work, which is exactly what makes that failure mode easy to miss.
+  // Gesture state lives in refs and is only mirrored into state for rendering. State is not
+  // readable synchronously: a quick flick delivers pointermove in the same React batch as
+  // pointerdown, where `swiping` is still false — so a guard reading state drops the whole
+  // gesture. Slow drags happened to work, which is what made it easy to miss.
   const activeRef = useRef(false)
   const xRef = useRef(0)
 
@@ -86,7 +78,7 @@ function SetRow({ set, unit, onDelete }) {
           transition: swiping ? 'none' : `transform .25s ${SPRING}`,
         }}
       >
-        <div className="text-[#5F665F]">{set.set_number}</div>
+        <div className="text-muted-foreground">{set.set_number}</div>
         <div>
           {display(set.weight_kg, unit)}
           <span className="ml-0.5 font-sans text-[10px] text-muted-foreground">{unit}</span>
@@ -94,7 +86,11 @@ function SetRow({ set, unit, onDelete }) {
         <div>{set.reps}</div>
         <div className={set.rir != null && set.rir <= 1 ? 'text-[#F2B544]' : ''}>{set.rir ?? '—'}</div>
         <div>{set.rpe ?? '—'}</div>
-        <button onClick={onDelete} className="text-[#5F665F]">
+        <button
+          onClick={onDelete}
+          aria-label={`Delete set ${set.set_number}`}
+          className="tap-target text-muted-graphic"
+        >
           <Trash2 className="h-[15px] w-[15px]" />
         </button>
       </div>
@@ -173,7 +169,7 @@ export function ExerciseBlock({ block, index, total, unit, onReorder, onRemove, 
             aria-label={`Reorder ${block.name}`}
             // touch-none: this handle owns the vertical axis, otherwise the drag would be
             // stolen by the page scroll on the first pixel of movement.
-            className="mt-[3px] shrink-0 cursor-grab touch-none self-start text-[#5F665F] active:cursor-grabbing"
+            className="tap-target mt-[3px] shrink-0 cursor-grab touch-none self-start text-muted-graphic active:cursor-grabbing"
           >
             <GripVertical className="h-[19px] w-[19px]" />
           </button>
@@ -200,14 +196,18 @@ export function ExerciseBlock({ block, index, total, unit, onReorder, onRemove, 
             )}
           </div>
         </div>
-        <button onClick={onRemove} className="shrink-0 text-[#5F665F]">
+        <button
+          onClick={onRemove}
+          aria-label={`Remove ${block.name} from this workout`}
+          className="tap-target shrink-0 text-muted-graphic"
+        >
           <X className="h-4 w-4" />
         </button>
       </div>
 
       {(block.sets.length > 0 || pending > 0) && (
         <div className="px-[13px] pb-2">
-          <div className="grid grid-cols-[20px_1fr_46px_42px_42px_24px] gap-[6px] text-[9px] uppercase tracking-[0.05em] text-[#5F665F]">
+          <div className="grid grid-cols-[20px_1fr_46px_42px_42px_24px] gap-[6px] text-[9px] uppercase tracking-[0.05em] text-muted-foreground">
             <div>#</div>
             <div>Weight</div>
             <div>Reps</div>
@@ -223,7 +223,7 @@ export function ExerciseBlock({ block, index, total, unit, onReorder, onRemove, 
             <button
               key={`pending-${i}`}
               onClick={onLogSet}
-              className="grid w-full grid-cols-[20px_1fr_46px_42px_42px_24px] items-center gap-[6px] border-t border-dashed border-accent py-[7px] text-left font-mono text-[13px] text-[#5F665F]"
+              className="grid w-full grid-cols-[20px_1fr_46px_42px_42px_24px] items-center gap-[6px] border-t border-dashed border-accent py-[7px] text-left font-mono text-[13px] text-muted-foreground"
             >
               <div>{block.sets.length + i + 1}</div>
               <div>—</div>

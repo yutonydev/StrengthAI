@@ -333,6 +333,7 @@ export default function Workout() {
       >
         <button
           onClick={() => navigate('/')}
+          aria-label="Back to home"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-muted-foreground"
         >
           <ArrowLeft className="h-5 w-5" />

@@ -1,22 +1,8 @@
-/**
- * A very small stale-while-revalidate cache, sized for this app and nothing more.
- *
- * The problem it solves: every tab refetched its whole world on mount, so switching
- * back to a screen you were just on showed a 1–2s "Loading…" for data that hadn't
- * changed. Home and Progress each pull profile + sessions + sets + variants, so the
- * same six queries were being re-run constantly.
- *
- * The contract:
- *   - A screen with cached data renders it immediately and never shows a loading state.
- *   - Every mount still revalidates in the background, so nothing is ever served from
- *     cache without a fresh read behind it. This is what keeps it honest — the cache
- *     defers a render, it does not decide what the truth is.
- *   - Writes invalidate their own keys from inside db.js, so the refetch happens at the
- *     moment of the write rather than being left to whichever screen you visit next.
- *
- * Deliberately absent: time-based expiry, retries, pagination, garbage collection. If
- * this needs any of those it should be a real query library instead of this file.
- */
+// A very small stale-while-revalidate cache. A screen with cached data renders immediately
+// and never shows a spinner, but every mount still revalidates behind it — the cache defers
+// a render, it does not decide what the truth is. Writes invalidate their own keys inside
+// db.js. No expiry, retries, pagination or GC: needing those means using a real query
+// library instead of this file.
 
 /** key -> { data, fetcher }. `fetcher` is remembered so invalidate() can re-run it. */
 const entries = new Map()
@@ -24,11 +10,8 @@ const entries = new Map()
 const inflight = new Map()
 /** key -> Set<fn>, notified whenever a key's data changes. */
 const listeners = new Map()
-/**
- * key -> monotonic request number. A forced refetch issued while an older request is
- * still in the air must win regardless of which response lands first, otherwise a slow
- * pre-write read can overwrite the post-write data it raced.
- */
+// key -> monotonic request number. A forced refetch must win over an older in-flight read
+// regardless of which lands first, or a slow pre-write read overwrites post-write data.
 const versions = new Map()
 
 export function getCached(key) {
@@ -86,12 +69,8 @@ export function fetchQuery(key, fetcher, { force = false } = {}) {
   return request
 }
 
-/**
- * Mark keys as changed and refetch them now.
- *
- * The cached value is deliberately kept until the fresh one lands, so a screen already
- * showing it doesn't blink back to a loading state — it updates in place.
- */
+// Mark keys as changed and refetch now. The cached value is kept until the fresh one lands,
+// so a screen showing it updates in place instead of blinking back to a spinner.
 export function invalidate(...keys) {
   for (const key of keys) {
     const entry = entries.get(key)

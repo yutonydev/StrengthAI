@@ -1,21 +1,9 @@
-/**
- * What to add next, and why.
- *
- * The list this replaces was ordered by lifetime use count and labelled "Most logged". That
- * is a fact about the whole history, not about the session in front of you — the same six
- * lifts in the same order on a push day and a leg day, with a number that never explains
- * itself. This ranks by what actually follows what, and every row carries its reason.
- *
- * Three tiers, least speculative first:
- *
- *   1. Template remainder  — the session declares what comes next; nothing to infer.
- *   2. Co-occurrence       — weighted by how close the lift sits to the slot being filled
- *                            and how recent the session was.
- *   3. Recency fallback    — so the list is never empty and never silent about why.
- *
- * Pure: everything is passed in already loaded. No network, no clock beyond `now`, which is
- * injectable so the reasons are testable.
- */
+// What to add next, and why. The list this replaces ranked by lifetime use count — a fact
+// about the whole history, not the session in front of you, giving the same six lifts on a
+// push day and a leg day. This ranks by what actually follows what, in three tiers, least
+// speculative first: the template remainder, then co-occurrence weighted by slot distance
+// and recency, then a recency fallback so the list is never empty or silent about why.
+// Pure — everything is passed in, and `now` is injectable so the reasons are testable.
 import { canonicalLabel } from './resolver.js';
 
 /** 1st, 2nd, 3rd… for "usually 3rd". */
@@ -33,17 +21,9 @@ export function ago(ts, now = Date.now()) {
   return `${Math.round(days / 7)} weeks ago`;
 }
 
-/**
- * @param {object} input
- * @param {Array}  input.variants      the lifter's registry
- * @param {Array}  input.sessions      all sessions; only completed ones inform the ranking
- * @param {Array}  input.sets          all sets, for "last trained"
- * @param {Array}  input.templates     all templates, for the remainder tier
- * @param {Array}  input.currentOrder  variant ids already in the session being built
- * @param {string} input.templateId    template this session was started from, if any
- * @param {number} input.now
- * @returns {Array<{ variant: object, reason: string }>}
- */
+// Takes the registry, all sessions (completed ones inform the ranking), all sets, all
+// templates, the ids already in the session, the template it was started from, and `now`.
+// Returns [{ variant, reason }].
 export function suggestNext({
   variants = [],
   sessions = [],
@@ -115,11 +95,9 @@ export function suggestNext({
     });
   });
 
-  // Only claim session membership where the history actually shows it. A leg press has zero
-  // overlap with a push session, so "often in this session" would be the app contradicting
-  // its own data — worse than the bare use count it replaced. Those fall through to tier 3,
-  // which says something true instead. At slot 0 there is no session shape to contradict
-  // yet, so a plain "often trained" is honest.
+  // Only claim session membership where the history shows it: a leg press has zero overlap
+  // with a push session, so "often in this session" would contradict the app's own data.
+  // Those fall through to tier 3. At slot 0 there is no session shape to contradict yet.
   Object.keys(score)
     .filter((id) => shared[id] > 0 || slot === 0)
     .sort((a, b) => score[b] - score[a])

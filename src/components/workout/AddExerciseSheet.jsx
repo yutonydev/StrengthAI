@@ -36,7 +36,7 @@ function JointActionRow({ actions }) {
   if (!actions?.length) return null
   return (
     <div className="mt-[11px]">
-      <div className="mb-[6px] text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[#5F665F]">
+      <div className="mb-[6px] text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         Joint actions
       </div>
       <div className="flex flex-wrap gap-[5px]">
@@ -54,7 +54,7 @@ function MuscleRow({ muscles }) {
   if (!muscles?.length) return null
   return (
     <div className="mt-[11px]">
-      <div className="mb-[6px] text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[#5F665F]">
+      <div className="mb-[6px] text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         Trains
       </div>
       <div className="flex flex-wrap gap-[5px]">
@@ -227,7 +227,7 @@ function ResolutionCard({ result, variants, unit, submitting, onConfirm, onRetry
       <div className="mt-[11px] text-[12.5px] leading-[1.55] text-muted-foreground">{trend}</div>
       {lowConfidence && (
         <div className="mt-[8px] flex items-start gap-[7px] text-[11.5px] leading-[1.5] text-[#8A928C]">
-          <span className="mt-[1px] shrink-0 text-[#5F665F]">?</span>
+          <span className="mt-[1px] shrink-0 text-muted-foreground">?</span>
           The coach worked this one out from the name rather than recognising it — worth a look before you trust
           the note.
         </div>

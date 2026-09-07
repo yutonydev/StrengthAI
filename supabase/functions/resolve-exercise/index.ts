@@ -1,29 +1,16 @@
-/**
- * resolve-exercise — turns a free-text description into a canonical exercise variant.
- *
- * The model is the authority. There is no dictionary fallback and no hand-written alias
- * list; an earlier design had both, and they outranked the model on any phrase they
- * happened to touch, which is how "jm press" became a tricep extension and
- * "heel elevated barbell squat" silently merged into a plain barbell squat.
- *
- * Order of operations:
- *   1. Junk filter (free)          — obvious nonsense never reaches the model
- *   2. Alias cache (free)          — anyone resolved this phrase before? Done.
- *   3. Model call (~$0.002)        — one call, cached forever after
- *
- * Runs server-side so the API key is never in the browser, and so the per-user monthly cap
- * cannot be edited by the client.
- */
+// resolve-exercise — free text in, canonical exercise variant out. The model is the
+// authority: no dictionary fallback, no alias list. Three layers, cheapest first —
+// junk filter (free), alias cache (free), model call (~$0.002, cached forever after).
+// Server-side so the API key stays out of the browser and the monthly cap out of reach
+// of the client.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { json, preflight, userIdFrom } from '../_shared/http.ts';
 import { capFromEnv, checkCap, monthStartKey } from '../_shared/usage.ts';
 // Optional workspace header included here — see _shared/anthropic.ts for why an
 // identity-linked key needs it and a workspace-scoped one must not get it.
 import { anthropicHeaders } from '../_shared/anthropic.ts';
-// The vocabulary and the cache-key normalization, shared verbatim with the browser —
-// see _shared/vocab.ts for why a second copy here was a liability rather than a
-// convenience. `norm` below stays local: it is a looser cleanup for model output, not
-// the cache key, and the two must not be conflated.
+// Vocabulary and cache-key normalization, shared verbatim with the browser. `norm` below
+// stays local: a looser cleanup for model output, not the cache key. Do not conflate them.
 import {
   BODY_PARTS,
   JOINT_ACTIONS,
@@ -33,21 +20,13 @@ import {
   VOCAB_MODS,
 } from '../_shared/vocab.ts';
 
-// Pinned to a version alias, never `-latest`.
-//
-// `claude-3-5-haiku-latest` broke this function once already: the underlying dated model
-// retired, calls started returning 404, and because a 404 and a network failure land in the
-// same catch on the client, the AI layer degraded to "I could not reach the coach just now"
-// and read as bad wifi for days. A version alias tracks one generation and cannot silently
-// jump; override via the RESOLVER_MODEL secret if it ever needs pinning harder.
+// A version alias, never `-latest`: a retired dated model once returned 404s that were
+// indistinguishable from bad wifi on the client, for days. Override via RESOLVER_MODEL.
 const MODEL = Deno.env.get('RESOLVER_MODEL') ?? 'claude-haiku-4-5';
 
-// Env-configurable like the chat coach's cap, so the limit can be changed — or exercised in
-// a test — without redeploying the function. A cap you cannot reach on demand is a cap
-// nobody ever verifies, which is how the broken one survived for months.
-//
-// Parsed through capFromEnv rather than Number(): a typo'd secret would otherwise become NaN
-// and disable the cap entirely, silently.
+// Env-configurable so the cap can be exercised in a test without a redeploy — a cap nobody
+// can reach is a cap nobody verifies, which is how the broken one survived for months.
+// capFromEnv, not Number(): a typo'd secret would become NaN and silently disable it.
 const MONTHLY_CALL_CAP = capFromEnv(Deno.env.get('RESOLVER_MONTHLY_CAP'), 400, 'RESOLVER_MONTHLY_CAP');
 
 const norm = (s: unknown) =>
@@ -155,22 +134,11 @@ the description matches one, so it continues an existing trend line rather than 
 ${known}`;
 }
 
-/**
- * Backfill — an OWNER-OPERATED migration, not a user feature.
- *
- * Adding a resolver field leaves every previously-resolved row without it, and partial
- * coverage is worse than none: per-joint volume would quietly exclude the lifts people have
- * been training longest, which are exactly where a plateau shows up first. Variants are
- * per-user rows, so a fix that signs in as one lifter only ever reaches one account.
- *
- * Gated on the service-role key rather than a user JWT for that reason: it has to cross
- * account boundaries, which no user is allowed to do. The key never ships in the app — the
- * project owner runs this once from their own machine.
- *
- * This only translates base + mods into joint actions. The caller owns the writes, so
- * nothing here can touch a row it was not asked about. One model call per batch, so the
- * whole database costs a fraction of a cent.
- */
+// Backfill — an OWNER-OPERATED migration, not a user feature. A new resolver field leaves
+// old rows without it, and partial coverage excludes the longest-trained lifts, which is
+// where a plateau shows first. Gated on the service-role key because it must cross account
+// boundaries; the key never ships in the app. Translates base + mods only — the caller owns
+// the writes. One model call per batch.
 async function handleBackfill(
   body: Record<string, unknown>,
   authHeader: string,
@@ -299,10 +267,9 @@ Deno.serve(async (req) => {
     }
 
     // ---- cap ------------------------------------------------------------------------
-    // `resolver_usage` is a daily counter — (user_id, day, calls) — so a monthly cap is the
-    // sum of this month's rows, at most 31 of them. Summing rather than counting rows is
-    // load-bearing: a row count would cap a heavy user at 31 calls and never stop a light
-    // one. See _shared/usage.ts for what the previous version got wrong.
+    // `resolver_usage` is a daily counter, so a monthly cap sums this month's rows.
+    // Summing not counting: a row count caps a heavy user at 31 and never stops a
+    // light one. See _shared/usage.ts for what the previous version got wrong.
     const { data: usageRows, error: usageErr } = await admin
       .from('resolver_usage')
       .select('calls')
@@ -345,8 +312,7 @@ Deno.serve(async (req) => {
 
     if (!res.ok) {
       const detail = await res.text();
-      // Loud on purpose. A silent failure here is indistinguishable from bad wifi on the
-      // client, which is exactly how the retired-model outage went unnoticed for days.
+      // Loud on purpose: a silent failure here reads as bad wifi on the client.
       console.error('[resolve-exercise] anthropic error', res.status, detail.slice(0, 400));
       return json({ ok: false, unavailable: true, reason: 'I could not reach the coach just now.' });
     }
@@ -362,9 +328,8 @@ Deno.serve(async (req) => {
       return json({ ok: false, unavailable: true, reason: 'I could not reach the coach just now.' });
     }
 
-    // Atomic increment on the (user_id, day) counter. The previous insert named a `phrase`
-    // column that does not exist and omitted the not-null `day`, so it failed on every
-    // call — and its error was never checked, so nothing ever surfaced.
+    // Atomic increment on the (user_id, day) counter. The previous insert named a column
+    // that does not exist and failed on every call, unchecked.
     const { error: bumpErr } = await admin.rpc('bump_resolver_usage', { target_user: userId });
     if (bumpErr) console.error('[resolve-exercise] usage bump failed', bumpErr);
 
@@ -385,11 +350,10 @@ Deno.serve(async (req) => {
       ? [...new Set(parsed.mods.map(norm).filter((m: string) => m && m.length <= 24))]
       : [];
 
-    // Safety net for the critical rule above. The model sometimes explains a distinguishing
-    // term in `note` but omits it from `mods` — which merges the variant into the plain
-    // movement's trend line, invisibly and permanently. Any content word from the input that
-    // neither the base nor a mod accounts for becomes a tag, so a forgotten term degrades to
-    // an ugly tag rather than corrupted data.
+    // Safety net for the rule above: the model sometimes explains a distinguishing term in
+    // `note` but omits it from `mods`, which merges the variant into the plain movement's
+    // trend line, invisibly and permanently. Any unaccounted-for content word becomes a tag,
+    // so a forgotten term degrades to an ugly label rather than bad data.
     const FILLER = new Set([
       'a', 'an', 'the', 'and', 'with', 'of', 'for', 'to', 'at', 'in', 'on', 'my', 'me',
       'using', 'use', 'used', 'plus', 'both', 'set', 'sets', 'rep', 'reps', 'x', 'then',
@@ -418,9 +382,8 @@ Deno.serve(async (req) => {
       }))
       .filter((m: { name: string }) => MUSCLES.includes(m.name));
 
-    // Cap secondaries server-side as well as in the prompt. An over-long list silently
-    // inflates per-muscle weekly volume, and the prompt is guidance rather than a
-    // guarantee. Primaries are never trimmed.
+    // Secondaries capped server-side too: an over-long list inflates weekly volume, and the
+    // prompt is guidance, not a guarantee. Primaries are never trimmed.
     const trimmedMuscles = [
       ...muscles.filter((m: { role: string }) => m.role === 'primary'),
       ...muscles.filter((m: { role: string }) => m.role === 'secondary').slice(0, 2),
@@ -449,10 +412,10 @@ Deno.serve(async (req) => {
       source: 'ai' as const,
     };
 
-    // Cache it. High-confidence answers go in the SHARED cache so nobody pays for this
-    // phrase again; low-confidence stays private, so a shaky inference cannot teach everyone
-    // something wrong. Conflict target must match the NULLS NOT DISTINCT constraint from
-    // migration 003 — a partial index cannot be inferred here and every write fails silently.
+    // High-confidence answers go in the SHARED cache so nobody pays for this phrase again;
+    // low-confidence stays private, so a shaky inference cannot teach everyone something
+    // wrong. The conflict target must match migration 003's NULLS NOT DISTINCT constraint —
+    // a partial index cannot be inferred, and every write then fails silently.
     const { error: cacheErr } = await admin.from('exercise_aliases').upsert(
       {
         phrase,

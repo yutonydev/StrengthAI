@@ -25,6 +25,9 @@
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
+    /* muted-graphic: icons and chart strokes only (3:1 bar). Never text. */
+    --color-muted-graphic: var(--muted-graphic);
+    --color-sheet: var(--sheet);
     --color-destructive: var(--destructive);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
@@ -69,6 +72,9 @@
     --accent: #1E2220;
     --accent-foreground: #ECEFEA;
     --destructive: #F2705C;
+    /* Replaced #5F665F, which was 2.72:1 and failed both bars everywhere. */
+    --muted-graphic: #767D74;
+    --sheet: #141715;
     --border: #272C29;
     --input: #272C29;
     --ring: #A8C9A2;
@@ -143,28 +149,38 @@
 }
 
 /* Screen transition on route change. Applied to the keyed wrapper in AppLayout, which
-   remounts per pathname so the animation re-runs on every navigation.
+   remounts per pathname so the animation re-runs.
 
-   Opacity ONLY — deliberately, and it must stay that way. The prototype's version also
-   slid the screen up 9px, but any transform here (even the translateY(0) that an
-   `animation-fill-mode: both` leaves behind permanently) makes this element the
-   containing block for every position:fixed descendant. That silently re-anchors the
-   bottom nav, the rest timer and the chat composer to this box instead of the viewport,
-   so the nav stops being pinned and renders inline after the page content. */
+   Opacity ONLY, and it must stay that way: any transform here (even the translateY(0) an
+   `animation-fill-mode: both` leaves behind) makes this the containing block for every
+   position:fixed descendant, which unpins the bottom nav, rest timer and chat composer. */
 @keyframes screen-fade {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
 
-/* No fill-mode, deliberately. `both` holds the from-state — opacity 0 — for as long as
-   the animation has not run to completion, and a CSS animation does not advance while the
-   document is hidden. A screen entered in a background tab therefore stayed at opacity 0
-   permanently: totally blank, with no error and no loading state to explain it. Without a
-   fill the element simply renders at its natural opacity when the animation isn't running,
-   so the worst failure is a missing fade rather than an invisible screen. There is no
-   delay on this animation, so there is nothing for a backwards fill to cover anyway. */
+/* No fill-mode, deliberately. `both` holds opacity 0 until the animation completes, and a
+   CSS animation does not advance while the document is hidden — a screen entered in a
+   background tab stayed blank permanently. Without a fill the worst case is a missing
+   fade. There is no delay here, so a backwards fill has nothing to cover anyway. */
 .screen-fade {
   animation: screen-fade 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 24x24 hit area (WCAG 2.5.8 AA) without changing visual size. For dense rows where
+   padding would break the grid. Not 44px: rows are ~30px apart and would overlap. */
+.tap-target {
+  position: relative;
+}
+
+.tap-target::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
 }
 
 /* Two pulses over 1.6s — sized to sit just inside the 1700ms the rest-done cue is

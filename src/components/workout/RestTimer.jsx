@@ -7,11 +7,8 @@ const CIRCUMFERENCE = 94.2 // 2*pi*r for r=15, matches the prototype's ring exac
 // half-finished pulse.
 const DONE_MS = 1700
 
-/**
- * `restEnd` is an absolute deadline (epoch ms), not a countdown — recomputed from
- * Date.now() every tick so it can't drift, and so a persisted deadline (see
- * Workout.jsx) resumes counting correctly after a reload rather than resetting.
- */
+// `restEnd` is an absolute deadline (epoch ms), not a countdown — recomputed from Date.now()
+// every tick so it cannot drift, and so a persisted deadline resumes after a reload.
 export function RestTimer({ restEnd, restLen, restFor, onExtend, onSkip }) {
   const [now, setNow] = useState(Date.now())
   // Hitting zero used to clear the timer immediately, so the countdown simply vanished.
@@ -114,7 +111,7 @@ export function RestTimer({ restEnd, restLen, restFor, onExtend, onSkip }) {
       <button onClick={onExtend} className="shrink-0 rounded-[9px] border border-[#3A403B] px-[9px] py-[7px] text-[11.5px] font-semibold">
         +30s
       </button>
-      <button onClick={onSkip} className="shrink-0 p-1 text-muted-foreground">
+      <button onClick={onSkip} aria-label="Skip rest" className="shrink-0 p-1 text-muted-foreground">
         <X className="h-[18px] w-[18px]" />
       </button>
     </div>

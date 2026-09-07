@@ -1,19 +1,10 @@
 import { useEffect, useState } from 'react'
 import { fetchQuery, getCached, subscribe } from '@/api/queryCache'
 
-/**
- * Read one cached query.
- *
- * `loading` is true only when there is nothing cached to show — that is the whole point.
- * A revisited screen has data, renders it on the first frame, and revalidates silently
- * behind it, so switching tabs stops flashing "Loading…" at data that hasn't changed.
- *
- * `fetcher` is read on mount only. Keep it free of component state: it is remembered by
- * the cache and re-run later by invalidate(), where a stale closure would be invisible.
- *
- * @param {string} key      cache key, from `qk`
- * @param {Function} fetcher `() => Promise<data>`
- */
+// Read one cached query. `loading` is true only when there is nothing cached to show, so a
+// revisited screen renders on the first frame and revalidates silently behind it.
+// `fetcher` is read on mount only and re-run later by invalidate() — keep it free of
+// component state, where a stale closure would be invisible.
 export function useQuery(key, fetcher) {
   const cached = getCached(key)
   const [data, setData] = useState(cached?.data)

@@ -1,15 +1,7 @@
-/**
- * Device-local working state, and the one place that knows how to drop all of it.
- *
- * These are the things held outside the database because they are about this device rather
- * than about the lifter's training: a rest countdown that has to survive the screen locking
- * between sets, and the chat thread.
- *
- * They must be cleared on sign-out for the same reason the query cache is (see db.js): a
- * shared or handed-on phone would otherwise show the next account the previous one's
- * conversation. The cache already had this covered; localStorage did not, and it is the
- * more durable of the two — a page reload clears module scope, but not this.
- */
+// Device-local working state — a rest countdown that must survive the screen locking, and
+// the chat thread — plus the one place that drops all of it. Cleared on sign-out for the
+// same reason the query cache is, and it matters more: a reload clears module scope, not
+// localStorage, so a handed-on phone would show the next account the previous conversation.
 
 /** Rest countdown deadline, so a reload mid-set resumes rather than resets. */
 export const REST_KEY = 'strengthai.rest'

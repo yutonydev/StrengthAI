@@ -183,6 +183,7 @@ export default function Home() {
         </div>
         <button
           onClick={() => navigate('/settings')}
+          aria-label="Settings"
           className="flex h-[38px] w-[38px] items-center justify-center rounded-xl border border-border text-muted-foreground"
         >
           <Settings className="h-[18px] w-[18px]" />
@@ -222,15 +223,17 @@ export default function Home() {
         <div className="flex items-center gap-1">
           <button
             onClick={() => setCursor(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}
+            aria-label="Previous month"
             className="flex h-[26px] w-[26px] items-center justify-center rounded-lg text-muted-foreground"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <button onClick={() => setCursor(null)} className="px-1.5 text-[11px] text-muted-foreground">
+          <button onClick={() => setCursor(null)} className="px-1.5 py-[6px] text-[11px] text-muted-foreground">
             Today
           </button>
           <button
             onClick={() => setCursor(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}
+            aria-label="Next month"
             className="flex h-[26px] w-[26px] items-center justify-center rounded-lg text-muted-foreground"
           >
             <ChevronRight className="h-4 w-4" />
@@ -242,7 +245,7 @@ export default function Home() {
         <div className="mb-[10px] text-[13px] font-semibold tracking-[-0.01em]">{calMonth}</div>
         <div className="grid grid-cols-7 gap-[3px]">
           {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-            <div key={i} className="text-center text-[9px] font-semibold tracking-[0.06em] text-[#5F665F]">
+            <div key={i} className="text-center text-[9px] font-semibold tracking-[0.06em] text-muted-foreground">
               {d}
             </div>
           ))}
@@ -290,7 +293,7 @@ export default function Home() {
         <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           Weekly goals
         </div>
-        <div className="font-mono text-[11px] text-[#5F665F]">{weekRangeLabel}</div>
+        <div className="font-mono text-[11px] text-muted-foreground">{weekRangeLabel}</div>
       </div>
 
       {goalRows.length > 0 ? (

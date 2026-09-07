@@ -30,24 +30,16 @@ export default function Settings() {
   const goalTimers = useRef({})
   // What each pending timer is going to write, so unmount can FLUSH rather than cancel.
   const pendingGoals = useRef({})
-  // body_part -> current value, mirrored SYNCHRONOUSLY.
-  //
-  // The stepper used to derive its new value inside the setMgoals updater, which React does
-  // not run until it renders. Anything outside the updater that needed the number therefore
-  // read `undefined`, which is what silently broke the flush-on-unmount below. A ref is
-  // readable and writable in the same tick, so two rapid clicks still each see the other's
-  // result — the property the updater was being used for in the first place.
+  // body_part -> current value, mirrored SYNCHRONOUSLY. The stepper used to derive its new
+  // value inside the setMgoals updater, which React does not run until it renders, so
+  // anything outside read `undefined` — that is what broke the flush-on-unmount below. A ref
+  // is readable in the same tick, so two rapid clicks still each see the other's result.
   const goalValues = useRef(new Map())
 
-  // Leaving Settings mid-burst must not silently drop the change.
-  //
-  // Cancelling the timers here was wrong and cost a real bug: tap +, navigate away inside the
-  // 400ms debounce, and the write never happened — the goal snapped back to its old value
-  // with nothing to explain why. The lifter did the thing; the app just forgot. So the
-  // cleanup fires the outstanding writes immediately instead of clearing them.
-  //
-  // Errors are swallowed rather than surfaced: this screen is already gone, so there is no
-  // banner left to show one in. That is the honest trade for not losing the write.
+  // Leaving mid-burst must not drop the change. Cancelling the timers here cost a real bug:
+  // tap +, navigate away inside the 400ms debounce, and the goal snapped back with nothing
+  // to explain why. So the cleanup fires outstanding writes instead of clearing them.
+  // Errors are swallowed — the screen is gone, there is no banner left to show one in.
   useEffect(() => {
     const timers = goalTimers.current
     const pending = pendingGoals.current
@@ -99,12 +91,9 @@ export default function Settings() {
     }
   }
 
-  // Steps a goal, then debounces the write per body part.
-  //
-  // The new value is computed from `goalValues` rather than from a render-time closure, so a
-  // burst of taps each builds on the last instead of all computing from the same stale
-  // render — and, unlike deriving it inside the setMgoals updater, it is available
-  // immediately to both the debounce and the flush-on-unmount.
+  // Steps a goal, then debounces the write per body part. The new value comes from
+  // `goalValues`, not a render-time closure, so a burst of taps each builds on the last and
+  // the number is available immediately to both the debounce and the flush-on-unmount.
   const bumpGoal = (bodyPart, delta) => {
     const current = goalValues.current.get(bodyPart) ?? 0
     const clamped = Math.max(0, Math.min(7, current + delta))
@@ -145,6 +134,7 @@ export default function Settings() {
       >
         <button
           onClick={() => navigate('/')}
+          aria-label="Back to home"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-muted-foreground"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -221,6 +211,7 @@ export default function Settings() {
                 <div className="flex items-center gap-[10px]">
                   <button
                     onPointerDown={() => start(() => bumpGoal(part, -1))}
+                    aria-label={`Decrease weekly ${PART_LABELS[part]} goal`}
                     onPointerUp={stop}
                     onPointerLeave={stop}
                     onPointerCancel={stop}
@@ -231,6 +222,7 @@ export default function Settings() {
                   <div className="w-4 text-center font-mono text-[15px]">{val}</div>
                   <button
                     onPointerDown={() => start(() => bumpGoal(part, 1))}
+                    aria-label={`Increase weekly ${PART_LABELS[part]} goal`}
                     onPointerUp={stop}
                     onPointerLeave={stop}
                     onPointerCancel={stop}
@@ -250,7 +242,7 @@ export default function Settings() {
         <div className="rounded-2xl border border-border bg-card p-[14px]">
           <div className="text-[11px] text-muted-foreground">Signed in as</div>
           <div className="mt-0.5 text-[14px] font-medium">{profileRow.email}</div>
-          <button onClick={handleLogout} className="mt-3 flex items-center gap-[7px] text-[13px] text-destructive">
+          <button onClick={handleLogout} className="mt-3 flex items-center gap-[7px] py-[3px] text-[13px] text-destructive">
             <LogOut className="h-4 w-4" />
             Log out
           </button>

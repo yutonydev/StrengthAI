@@ -1,18 +1,8 @@
-/**
- * The two pieces of chrome every screen needs: a loading placeholder and an error banner.
- *
- * Both were copy-pasted into seven and eight files respectively, with the class lists drifting
- * slightly as they went — `min-h-full` on the tab screens, `min-h-svh` on the full-page ones,
- * and no single place to change how a failure reads.
- */
+// The loading placeholder and error banner every screen needs. Both were copy-pasted into
+// seven and eight files, with the class lists drifting as they went.
 
-/**
- * Full-screen loading placeholder.
- *
- * @param {boolean} full `min-h-svh` for routes that own the whole viewport (Settings, the
- *   editors, session detail); the default `min-h-full` is for tab screens, which sit inside
- *   AppShell's already-sized column.
- */
+// Loading placeholder. `full` gives min-h-svh for routes that own the whole viewport; the
+// default min-h-full is for tab screens inside AppShell's already-sized column.
 export function ScreenLoading({ full = false }) {
   return (
     <div
@@ -23,13 +13,8 @@ export function ScreenLoading({ full = false }) {
   )
 }
 
-/**
- * Inline failure banner. Renders nothing when there is no error, so call sites can drop it in
- * unconditionally rather than repeating `{error && (...)}`.
- *
- * `className` carries the per-screen spacing, which genuinely differs: screens whose first
- * child is the banner want a bottom margin, ones inside a flex-gap column want none.
- */
+// Inline failure banner. Renders nothing without an error, so call sites can drop it in
+// unconditionally. `className` carries per-screen spacing, which genuinely differs.
 export function ErrorBanner({ error, className = '' }) {
   if (!error) return null
   return (

@@ -14,7 +14,7 @@ description of what exists; this file is the accurate description of how to chan
 ```bash
 npm install
 npm run dev     # http://localhost:5173
-npm test        # vitest — 118 tests, no database or network needed
+npm test        # vitest — 154 tests, no database or network needed
 npm run lint    # oxlint; currently warnings-only, no errors
 npm run build
 ```
@@ -22,9 +22,16 @@ npm run build
 Single test file: `npx vitest run src/lib/resolver.test.js`.
 
 Tests live in `src/lib/{resolver,coach,suggestNext}.test.js`,
-`supabase/functions/_shared/{usage,anthropic}.test.ts`, and
-`src/pages/pages.smoke.test.js`. All are plain function tests — no DB, no mocks, no
+`supabase/functions/_shared/{usage,anthropic}.test.ts`, `src/pages/pages.smoke.test.js`,
+`src/index.contrast.test.js` and `src/a11y.test.js`. All are plain function tests — no DB, no mocks, no
 setup. They should pass before any UI work is considered done.
+
+`index.contrast.test.js` parses the palette out of `index.css` and asserts every text token
+clears WCAG AA on every surface. `a11y.test.js` scans the JSX for interactive controls with
+no accessible name — the linter cannot do this one: `jsx-a11y/control-has-associated-label`
+is enabled and does catch `<button></button>`, but passes `<button><Trash2 /></button>`
+because a capitalised component might render text. Every icon-only control in this app is
+that exact shape.
 
 The smoke test only imports every page and shared module and checks it exports a component.
 It renders nothing. It exists because the routes are lazy (`App.jsx`), so a broken import no
@@ -207,9 +214,26 @@ project rather than copying its inline styles.
 
 - Type: Instrument Sans for interface text, JetBrains Mono for anything compared
   numerically (weights, reps, RIR, dates). Numbers are tabular.
-- Color: `#101211` background, `#171A18` cards, `#272C29` borders, `#ECEFEA` text,
-  `#8A928C`/`#5F665F` secondary/tertiary text, `#A8C9A2` accent (actions/positive,
-  `#12160B` text on filled accent buttons), `#4C8E96` secondary data series,
-  `#F2B544` warnings/plateaus/health advisories, `#F2705C` destructive.
+- Color: `#101211` background, `#171A18` cards, `#141715` sheets, `#1E2220` raised rows,
+  `#272C29` borders, `#ECEFEA` text, `#8A928C` secondary text, `#A8C9A2` accent
+  (actions/positive, `#12160B` text on filled accent buttons), `#4C8E96` secondary data
+  series, `#F2B544` warnings/plateaus/health advisories, `#F2705C` destructive.
+
+  **Use the tokens, not the hex.** They are defined once in `src/index.css` and exposed as
+  Tailwind utilities: `text-muted-foreground`, `bg-card`, `bg-sheet`, `text-muted-graphic`
+  and so on. The palette was previously half tokenised and half copied as literals, which
+  is how a failing colour ended up in 29 places across 14 files without anyone noticing.
+
+  **There is no tertiary text colour any more.** The old `#5F665F` measured 2.72:1 on the
+  raised surface — below the 4.5:1 WCAG AA needs for text AND below the 3:1 it needs for
+  icons, on every ground it was used on. Small text that used it is now
+  `text-muted-foreground`. What survives is `--muted-graphic` (`#767D74`), which clears the
+  3:1 non-text bar and is **only** for icon glyphs and chart strokes — never text.
+  `src/index.contrast.test.js` computes all of this from the real token values and fails the
+  build if any of it stops being true, so contrast is not something you have to remember.
 - Radii: 11px controls, 14–16px inner cards, 18–20px outer cards, 22px sheets. Sheets
   animate up over 260ms on `cubic-bezier(.32,.72,0,1)`.
+- Touch targets are at least 24x24 CSS px (WCAG 2.5.8, AA). Add padding where the layout
+  has room; use the `.tap-target` class where it does not — it grows the hit area with a
+  pseudo-element and moves nothing. Do not reach for 44px in dense rows: targets 30px apart
+  would then overlap, which is a worse failure than the one being fixed.

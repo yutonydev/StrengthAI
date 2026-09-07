@@ -80,6 +80,7 @@ export default function Templates() {
         </div>
         <button
           onClick={handleNew}
+          aria-label="New template"
           className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-primary text-primary-foreground"
         >
           <Plus className="h-[22px] w-[22px]" />
@@ -87,7 +88,7 @@ export default function Templates() {
       </div>
 
       {templateList.length === 0 ? (
-        <div className="flex flex-col items-center gap-[10px] py-[60px] text-center text-[#5F665F]">
+        <div className="flex flex-col items-center gap-[10px] py-[60px] text-center text-muted-foreground">
           <Dumbbell className="h-[38px] w-[38px]" />
           <div className="text-[13px]">No templates yet. Tap + to build one.</div>
         </div>
@@ -109,7 +110,11 @@ export default function Templates() {
                     <div className="text-[15px] font-semibold tracking-[-0.01em]">{t.name}</div>
                     <div className="mt-[3px] truncate text-[12px] leading-[1.4] text-muted-foreground">{summary}</div>
                   </button>
-                  <button onClick={() => setPendingDelete(t)} className="text-[#5F665F]">
+                  <button
+                    onClick={() => setPendingDelete(t)}
+                    aria-label={`Delete ${t.name}`}
+                    className="text-muted-graphic"
+                  >
                     <Trash2 className="h-[17px] w-[17px]" />
                   </button>
                 </div>

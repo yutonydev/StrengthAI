@@ -5,15 +5,10 @@ import { AppLayout, PlainLayout } from '@/components/AppLayout'
 import Home from '@/pages/Home'
 import Login from '@/pages/Login'
 
-/*
- * Home and Login are eager: they are the two screens the app can open on, and code-splitting
- * the first paint would only trade bundle size for a spinner on the critical path.
- *
- * Everything else is lazy. The whole app used to arrive as one 637 kB chunk, which meant a
- * lifter opening Home on gym wifi also downloaded the charts, the template editor and both
- * coach screens before anything rendered. Suspense boundaries live in AppLayout, around the
- * Outlet, so a route being fetched shows the same placeholder as a route being loaded.
- */
+// Home and Login are eager — the two screens the app can open on, where code-splitting
+// would only trade bundle size for a spinner on the critical path. Everything else is
+// lazy; the app used to arrive as one 637 kB chunk. Suspense boundaries live in AppLayout
+// around the Outlet, so a route being fetched looks the same as one being loaded.
 const Register = lazy(() => import('@/pages/Register'))
 const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('@/pages/ResetPassword'))

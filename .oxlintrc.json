@@ -2,7 +2,8 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": [
     "react",
-    "oxc"
+    "oxc",
+    "jsx-a11y"
   ],
   "rules": {
     "react/rules-of-hooks": "error",
@@ -12,7 +13,13 @@
         "allowConstantExport": true
       }
     ],
-    "no-unused-vars": "warn"
+    "no-unused-vars": "warn",
+    "jsx-a11y/control-has-associated-label": "error",
+    "jsx-a11y/alt-text": "error",
+    "jsx-a11y/anchor-has-content": "error",
+    "jsx-a11y/role-has-required-aria-props": "error",
+    "jsx-a11y/aria-props": "error",
+    "jsx-a11y/label-has-associated-control": "warn"
   },
   "ignorePatterns": [
     "prototype/**",

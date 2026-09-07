@@ -1,17 +1,9 @@
 import { describe, it, expect } from 'vitest';
 
-/**
- * Every screen imports cleanly and exports a component.
- *
- * This does not render anything — there is no DOM here and these tests stay dependency-free
- * on purpose (see CLAUDE.md). What it catches is the failure mode the other 85 tests cannot:
- * a screen that no longer *loads*. A renamed export, a deleted helper still being imported, a
- * circular import, a constant moved to another module — none of those touch pure logic, so
- * the lib tests stay green while the app shows a blank page.
- *
- * That gap became real when the routes went lazy: a broken import used to fail the build,
- * and now it fails at navigation instead, on whichever screen the lifter happens to open.
- */
+// Every screen imports cleanly and exports a component. Renders nothing — it catches the
+// failure the pure-logic tests cannot: a screen that no longer *loads*. A renamed export or
+// a circular import leaves the lib tests green while the app shows a blank page, and since
+// the routes went lazy that fails at navigation instead of at build time.
 const PAGES = {
   Home: () => import('./Home.jsx'),
   Login: () => import('./Login.jsx'),

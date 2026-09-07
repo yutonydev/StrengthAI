@@ -15,7 +15,7 @@ export function VolumeChart({ data, unit }) {
   const [active, setActive] = useState(data.length ? data.length - 1 : null)
 
   if (data.length === 0) {
-    return <p className="py-[26px] text-center text-[12.5px] text-[#5F665F]">Not enough sessions yet.</p>
+    return <p className="py-[26px] text-center text-[12.5px] text-muted-foreground">Not enough sessions yet.</p>
   }
 
   const max = Math.max(1, ...data.map((d) => d.volume))
@@ -64,7 +64,7 @@ export function VolumeChart({ data, unit }) {
                 textAnchor="middle"
                 fontSize="9"
                 fontFamily="'JetBrains Mono', monospace"
-                fill="#5F665F"
+                className="fill-muted-foreground"
               >
                 {d.shortLabel}
               </text>

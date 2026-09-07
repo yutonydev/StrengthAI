@@ -8,28 +8,15 @@ import { qk } from '@/api/queryCache'
 import { ErrorBanner } from '@/components/ScreenState'
 import { CHAT_KEY } from '@/lib/localState'
 
-/**
- * The chat coach.
- *
- * The model sees a facts payload built by `buildCoachFacts` and never touches the database,
- * so every number it quotes came from a tested pure function over sets the lifter actually
- * logged. It can create a template and stage exercises into a session; it cannot write a
- * weight, a rep count or an RIR, because those are the lifter's to enter.
- *
- * Facts are recomputed on every send rather than cached — someone can log a set mid
- * conversation, and an answer grounded in a stale payload is wrong in the worst way: it
- * looks right.
- */
+// The chat coach. The model sees a facts payload from buildCoachFacts and never touches the
+// database, so every number it quotes came from a tested function over real sets. It can
+// create a template and stage exercises; it cannot write a weight, a rep count or an RIR.
+// Facts are recomputed on every send — a stale payload is wrong in the worst way: it looks
+// right.
 
-/**
- * The opening screen is where a lifter learns which kinds of thing this can answer, so the
- * suggestions have to be answerable BY THEM.
- *
- * Two of these used to ask about the lifter's own history unconditionally. On a new account
- * that is a prompt to spend a model call being told there is no data — the most prominent
- * thing on the screen, and the one least likely to work. So the set now depends on whether
- * anything has been logged.
- */
+// Opening suggestions have to be answerable BY THIS LIFTER. Two of these used to ask about
+// their history unconditionally, so a new account's most prominent prompt spent a model
+// call being told there was no data. The set now depends on whether anything is logged.
 const STARTERS_WITH_HISTORY = [
   'Why has my bench stalled?',
   'Am I doing enough back volume?',
@@ -47,22 +34,12 @@ const STARTERS_NEW = [
 /** Height of the floating BottomNav, so the composer sits directly on top of it. */
 const NAV_H = 62
 
-/**
- * The thread survives a reload.
- *
- * Everything else in the app persists, and a chat that vanished on refresh was the one place
- * the lifter could lose something they had typed — mid-workout, with the screen locking
- * itself between sets, that is not a rare event.
- *
- * localStorage rather than a table: the same choice the rest timer already makes. The thread
- * is device-local working state, not training data — nothing the coach says here is a fact
- * about the lifter that is not already derivable from their sets, so there is nothing to
- * lose by it being per-device, and a table would need a migration, an RLS policy and a
- * retention answer for content the model wrote.
- *
- * The key lives in lib/localState.js, which is also what clears it on sign-out — a thread
- * left behind for the next account on a shared phone is the failure mode that matters here.
- */
+// The thread survives a reload. Everything else in the app persists, and a chat that
+// vanished on refresh was the one place the lifter could lose something they typed.
+// localStorage rather than a table — same choice the rest timer makes: it is device-local
+// working state, nothing here is a fact not already derivable from their sets, and a table
+// would need a migration, an RLS policy and a retention answer for model-written content.
+// The key lives in lib/localState.js, which also clears it on sign-out.
 /** Keeps the stored thread bounded; the server only sends the last 20 turns anyway. */
 const CHAT_CAP = 40
 
@@ -85,7 +62,7 @@ function ThinkingDots() {
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="h-[6px] w-[6px] rounded-full bg-[#5F665F]"
+          className="h-[6px] w-[6px] rounded-full bg-muted-graphic"
           style={{ animation: `coachdot 1.2s ${i * 0.18}s infinite ease-in-out` }}
         />
       ))}
@@ -94,13 +71,8 @@ function ThinkingDots() {
   )
 }
 
-/**
- * What the coach did, rendered from the tool result rather than from its prose.
- *
- * The card states the action the server actually performed. If the model described creating
- * something the tool never created, the card is what the lifter believes — the same reason
- * the numbers come from the facts payload instead of the model's memory.
- */
+// What the coach did, rendered from the tool result rather than its prose. If the model
+// described creating something the tool never created, the card is what the lifter believes.
 function ActionCard({ toolCall, onOpen }) {
   const { name, result } = toolCall
   if (!result?.ok) {
@@ -322,10 +294,11 @@ export default function CoachChat() {
                 }
               }}
               placeholder="Ask the coach…"
-              className="max-h-[120px] flex-1 resize-none rounded-[11px] border border-border bg-card px-[12px] py-[10px] text-[13.5px] text-foreground outline-none placeholder:text-[#5F665F] focus:border-primary/40"
+              className="max-h-[120px] flex-1 resize-none rounded-[11px] border border-border bg-card px-[12px] py-[10px] text-[13.5px] text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/40"
             />
             <button
               type="submit"
+              aria-label="Send message"
               disabled={!input.trim() || sending}
               className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-primary text-[#12160B] disabled:opacity-35"
             >

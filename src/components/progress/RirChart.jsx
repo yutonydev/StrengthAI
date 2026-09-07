@@ -8,7 +8,7 @@ export function RirChart({ points, declining }) {
   const [active, setActive] = useState(points.length ? points.length - 1 : null)
 
   if (points.length < 2) {
-    return <p className="py-[26px] text-center text-[12.5px] text-[#5F665F]">Not enough matched-load sessions yet.</p>
+    return <p className="py-[26px] text-center text-[12.5px] text-muted-foreground">Not enough matched-load sessions yet.</p>
   }
 
   const color = declining ? '#F2B544' : '#A8C9A2'
@@ -42,7 +42,7 @@ export function RirChart({ points, declining }) {
             textAnchor="end"
             fontSize="9"
             fontFamily="'JetBrains Mono', monospace"
-            fill="#5F665F"
+            className="fill-muted-foreground"
           >
             {n}
           </text>
@@ -69,7 +69,7 @@ export function RirChart({ points, declining }) {
             textAnchor="middle"
             fontSize="9"
             fontFamily="'JetBrains Mono', monospace"
-            fill="#5F665F"
+            className="fill-muted-foreground"
           >
             {new Date(points[i].date).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}
           </text>

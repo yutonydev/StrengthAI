@@ -1,20 +1,9 @@
-/**
- * coach-chat — the conversational coach.
- *
- * The model never queries the database. It gets a facts payload computed by
- * `buildCoachFacts` in src/lib/coach.js — tested pure functions over logged sets — and
- * nothing else. That is what makes "cite the numbers you used" enforceable: every figure it
- * can quote came from a function the lifter can check against their own Progress screen, so
- * an invented number is catchable rather than plausible.
- *
- * Two things it can DO, both validated server-side against the caller's own rows: create a
- * template, and stage exercises into a session. It cannot write a weight, a rep count or an
- * RIR. Those are user-entered, always — a fabricated set would corrupt the trend line this
- * app exists to keep honest, invisibly.
- *
- * Runs server-side so the API key is never in the browser and the daily cap cannot be
- * edited by the client.
- */
+// coach-chat — the conversational coach. The model never queries the database; it gets a
+// facts payload from buildCoachFacts (tested pure functions) and nothing else, which is
+// what makes "cite the numbers you used" enforceable. It can do exactly two things, both
+// re-validated server-side against the caller's own rows: create a template, and stage
+// exercises into a session. It cannot write a weight, a rep count or an RIR — a fabricated
+// set would corrupt the trend line this app exists to keep honest, invisibly.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { json, preflight, userIdFrom } from '../_shared/http.ts';
 import { capFromEnv, checkCap, dayKey } from '../_shared/usage.ts';
@@ -22,28 +11,22 @@ import { capFromEnv, checkCap, dayKey } from '../_shared/usage.ts';
 // identity-linked key needs it and a workspace-scoped one must not get it.
 import { anthropicHeaders } from '../_shared/anthropic.ts';
 
-// Pinned to a version alias, never `-latest`. `claude-3-5-haiku-latest` broke the resolver
-// once already: the dated model behind it retired, calls started 404ing, and because a 404
-// and a network failure land in the same catch on the client it read as bad wifi for days.
-//
-// Sonnet rather than the resolver's Haiku: this answers open training-science questions
-// rather than extracting fields from a phrase, and the reasoning gap shows.
+// A version alias, never `-latest`: a retired dated model once 404'd for days and read as
+// bad wifi. Sonnet rather than the resolver's Haiku — this answers open training-science
+// questions rather than extracting fields, and the reasoning gap shows.
 const MODEL = Deno.env.get('COACH_CHAT_MODEL') ?? 'claude-sonnet-5';
 
-// Daily rather than monthly, unlike the resolver. Resolve calls cache forever so their cost
-// curve flattens; a chat turn is personal and never repeats, so the cap is the only brake.
-//
-// Parsed through capFromEnv rather than Number(): a typo'd secret would otherwise become NaN
-// and disable the cap entirely, silently.
+// Daily, unlike the resolver: resolve calls cache forever so their cost flattens, but a
+// chat turn never repeats. capFromEnv, not Number(): a typo'd secret becomes NaN and
+// silently disables the cap.
 const DAILY_CAP = capFromEnv(Deno.env.get('COACH_CHAT_DAILY_CAP'), 40, 'COACH_CHAT_DAILY_CAP');
 
 // Bounds the cost of a long conversation. The facts payload carries the training history, so
 // dropping older turns loses conversational thread, not data about the lifter.
 const MAX_HISTORY = 20;
 
-// Raised from 1200 after a live answer came back cut off mid-word. Coaching replies that
-// explain a plateau and then qualify what the data cannot show run long, and an answer whose
-// caveat got truncated is worse than a shorter one — the hedge is the part that matters.
+// Raised from 1200 after a live answer was cut off mid-word. An answer whose caveat got
+// truncated is worse than a short one — the hedge is the part that matters.
 const MAX_TOKENS = 2000;
 
 // Appended when the model still runs out of room. Silently serving a half-sentence as though
@@ -230,14 +213,8 @@ const TOOLS = [
 
 type Admin = ReturnType<typeof createClient>;
 
-/**
- * Ownership check for every id the model hands back.
- *
- * The model is told to use ids from the facts payload, which only ever contains the caller's
- * own variants. This re-checks anyway: a prompt is guidance, not a guarantee, and an id that
- * slipped through from somewhere else would attach another account's exercise to this
- * lifter's session. Same reasoning as the resolver enforcing its tagging rule server-side.
- */
+// Ownership check for every id the model hands back. The prompt is guidance, not a
+// guarantee, and a stray id would attach another account's exercise to this lifter.
 async function ownedVariantIds(admin: Admin, userId: string, ids: unknown): Promise<string[]> {
   const wanted = (Array.isArray(ids) ? ids : []).map((x) => String(x)).filter(Boolean);
   if (!wanted.length) return [];
@@ -277,9 +254,8 @@ async function runStageSession(admin: Admin, userId: string, input: Record<strin
     return { ok: false, reason: 'None of those exercises are in your registry.' };
   }
 
-  // target_sets arrives as a list so the tool schema stays well-typed, and is stored as the
-  // {variantId: count} map the session row and ExerciseBlock both expect. Anything naming an
-  // exercise that failed the ownership check is dropped with it.
+  // A list on the wire so the tool schema stays well-typed; stored as the {variantId: count}
+  // map the session row expects. Entries that failed the ownership check drop with it.
   const allowed = new Set(variantIds);
   const targets: Record<string, number> = {};
   for (const row of Array.isArray(input.target_sets) ? input.target_sets : []) {
@@ -288,8 +264,7 @@ async function runStageSession(admin: Admin, userId: string, input: Record<strin
     if (allowed.has(id) && Number.isFinite(n) && n >= 1) targets[id] = Math.min(10, Math.round(n));
   }
 
-  // Same single-active-session guard the app uses: resume the open one, start one if there
-  // is none. Two active sessions would make "resume workout" ambiguous forever after.
+  // Same single-active-session guard the app uses — two would make "resume" ambiguous.
   const { data: existing, error: findErr } = await admin
     .from('workout_sessions')
     .select('*')
@@ -317,8 +292,7 @@ async function runStageSession(admin: Admin, userId: string, input: Record<strin
     return { ok: true, session: data, variantIds, created: true };
   }
 
-  // Append rather than replace, and skip anything already queued — the lifter may have built
-  // half the session by hand before asking.
+  // Append, skipping duplicates: the lifter may have built half the session by hand.
   const order: string[] = existing.exercise_order ?? [];
   const added = variantIds.filter((id) => !order.includes(id));
   const merged = { ...(existing.target_sets ?? {}), ...targets };
@@ -396,8 +370,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, unavailable: true, reason: 'The coach is not configured.' });
     }
 
-    // Facts ride in front of the conversation rather than in the system prompt so they can
-    // be refreshed every turn — the lifter may log a set mid-conversation.
+    // In front of the conversation, not the system prompt, so they refresh every turn.
     const messages = [
       {
         role: 'user' as const,
@@ -414,8 +387,7 @@ Deno.serve(async (req) => {
     });
 
     if (!res.ok) {
-      // Loud on purpose. A silent failure here is indistinguishable from bad wifi on the
-      // client, which is exactly how the retired-model outage went unnoticed for days.
+      // Loud on purpose: a silent failure here reads as bad wifi on the client.
       console.error('[coach-chat] anthropic error', res.status, (await res.text()).slice(0, 400));
       return json({ ok: false, unavailable: true, reason: 'I could not reach the coach just now.' });
     }
@@ -429,19 +401,15 @@ Deno.serve(async (req) => {
       .join('\n')
       .trim();
 
-    // The model ran out of room mid-answer. Observed live: a reply about a bench plateau
-    // stopped mid-word at "(Bench" and was served as though it were finished, which is worse
-    // than a short answer — the lifter cannot tell the difference between a complete thought
-    // and a severed one.
+    // Ran out of room mid-answer. Observed live: a reply stopped mid-word and was served as
+    // though finished, which the lifter cannot tell apart from a complete thought.
     const truncated = payload?.stop_reason === 'max_tokens';
     if (truncated) {
       console.warn('[coach-chat] response hit max_tokens', { model: MODEL, max_tokens: MAX_TOKENS });
     }
 
-    // A truncated response can also cut a tool_use block in half, leaving `input` partial:
-    // variant_ids missing entries, target_sets half-parsed, a template named from a clipped
-    // string. Executing that would write real rows from an incomplete instruction, so a
-    // truncated turn never runs a tool. Nothing is staged, and the lifter is told to retry.
+    // Truncation can also halve a tool_use block, leaving `input` partial — executing that
+    // writes real rows from an incomplete instruction. So a truncated turn never runs a tool.
     const call = truncated
       ? null
       : blocks.find((b: Record<string, unknown>) => b?.type === 'tool_use');
@@ -450,8 +418,7 @@ Deno.serve(async (req) => {
       console.warn('[coach-chat] discarded a tool_use from a truncated response');
     }
 
-    // Count the call whatever happens next: the model call is what costs money, and a tool
-    // that fails to execute has still been paid for.
+    // Counted whatever happens next: a tool that fails to execute was still paid for.
     const { error: bumpErr } = await admin.rpc('bump_coach_chat_usage', { target_user: userId });
     if (bumpErr) console.error('[coach-chat] usage bump failed', bumpErr);
 
@@ -481,14 +448,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // A tool call with no accompanying prose would render as an empty bubble. The prompt asks
-    // for a sentence; this is the floor if it forgets.
+    // A tool call with no prose renders as an empty bubble. Floor if the prompt is ignored.
     const replyText = text || (toolCall?.result?.ok ? 'Done — see below.' : 'I could not put that together.');
 
     return json({
       ok: true,
-      // The marker is appended rather than the text being hidden: a half-answer still carries
-      // real information, and the lifter should see both it and the fact that it stopped early.
+      // Appended, not hidden: a half-answer still carries real information.
       text: truncated ? `${replyText}${TRUNCATION_MARKER}` : replyText,
       truncated,
       toolCall,

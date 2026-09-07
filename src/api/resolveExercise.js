@@ -1,33 +1,13 @@
-/**
- * Client-side resolver orchestration.
- *
- * Three gates, cheapest first. Only the last one costs anything:
- *
- *   1. findLocal   — this lifter typed this exact phrase before. Instant, offline, free.
- *   2. junk filter — obvious nonsense never becomes a billable call.
- *   3. edge fn     — shared cache, then the model. One call per novel phrase, ever.
- *
- * Everything the UI needs to distinguish is in `status`. Nothing here decides what an
- * exercise IS — that is the model's job now.
- */
+// Client-side resolver orchestration. Three gates, cheapest first: findLocal (this lifter
+// typed the phrase before — instant, offline, free), the junk filter, then the edge
+// function (shared cache, then the model). Nothing here decides what an exercise IS.
 import { supabase } from './db';
 import { findLocal, isPlausibleExercise, normalizePhrase } from '@/lib/resolver';
 
-/**
- * @returns {Promise<{
- *   status: 'known'|'resolved'|'rejected'|'unresolved',
- *   base?, mods?, muscles?, muscle?, body_part?, note?, confidence?, source?,
- *   variant?, reason?, raw
- * }>}
- *
- * status meanings:
- *   known      — matches a variant this lifter already has; keep logging to that trend line
- *   resolved   — the model (or the shared cache) identified it; new or existing variant
- *   rejected   — not an exercise. The only status that blocks logging.
- *   unresolved — could not reach the model, or the monthly cap is hit. NEVER blocks:
- *                the lifter logs it as typed and it can be re-resolved later. A workout
- *                must always be loggable, even offline, even out of credit.
- */
+// Returns { status, base?, mods?, muscles?, body_part?, note?, confidence?, source?,
+// variant?, reason?, raw }. `rejected` is the only status that blocks logging;
+// `unresolved` (no model, or capped) never does — it saves as typed and can be re-resolved,
+// because a workout must be loggable offline and out of credit.
 export async function resolveExercise(text, variants = []) {
   const raw = String(text || '').trim();
   const phrase = normalizePhrase(raw);

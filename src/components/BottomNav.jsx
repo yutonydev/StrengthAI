@@ -15,11 +15,8 @@ const ITEMS = [
   { to: '/coach', label: 'Coach', Icon: Sparkles, match: (path) => path.startsWith('/coach') },
 ]
 
-/**
- * Floating translucent overlay, matching the prototype exactly (not sticky-in-flow) —
- * pages that sit under it (Home, Workout, Progress) each add matching bottom padding
- * so content clears the bar instead of scrolling behind it.
- */
+// Floating translucent overlay, matching the prototype — not sticky-in-flow, so the pages
+// under it each add matching bottom padding to clear the bar.
 export function BottomNav() {
   const location = useLocation()
 
@@ -37,7 +34,7 @@ export function BottomNav() {
                 key={to}
                 to={to}
                 className="flex flex-col items-center gap-[3px] py-[10px]"
-                style={{ color: active ? '#A8C9A2' : '#5F665F' }}
+                style={{ color: active ? 'var(--primary)' : 'var(--muted-foreground)' }}
               >
                 <Icon className="h-[21px] w-[21px]" />
                 <span className="text-[10px] font-semibold tracking-[0.01em]">{label}</span>

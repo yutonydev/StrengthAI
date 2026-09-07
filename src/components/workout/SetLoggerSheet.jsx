@@ -113,10 +113,9 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
       : 'How many more reps could you have done?'
 
   // Everything saved below is entered, never inferred. `best` and `plan` seed the PLACEHOLDER
-  // so the lifter can see what they did last time; they never become the saved value. The old
-  // version fell back to them — and to a hardcoded RIR of 2 — whenever a field was left blank,
-  // so tapping straight through logged a fabricated set at your best-ever weight carrying an
-  // effort rating you never gave. That rating is exactly what detectPlateau reads.
+  // only. The old version fell back to them — and to a hardcoded RIR of 2 — on a blank field,
+  // so tapping through logged a fabricated set at your best-ever weight carrying an effort
+  // rating you never gave. That rating is exactly what detectPlateau reads.
   const weightNum = parseFloat(weight)
   const repsNum = parseFloat(reps)
   const weightOk = weight.trim() !== '' && Number.isFinite(weightNum) && weightNum > 0
@@ -163,6 +162,7 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
           <div className="mt-[6px] flex items-center gap-[10px]">
             <button
               onPointerDown={() => start(weightDown)}
+              aria-label={`Decrease weight by ${stepAmt} ${unit}`}
               onPointerUp={stop}
               onPointerLeave={stop}
               onPointerCancel={stop}
@@ -183,6 +183,7 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
             />
             <button
               onPointerDown={() => start(weightUp)}
+              aria-label={`Increase weight by ${stepAmt} ${unit}`}
               onPointerUp={stop}
               onPointerLeave={stop}
               onPointerCancel={stop}
@@ -201,6 +202,7 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
           <div className="flex items-center gap-[6px]">
             <button
               onPointerDown={() => start(repsDec)}
+              aria-label="Decrease reps"
               onPointerUp={stop}
               onPointerLeave={stop}
               onPointerCancel={stop}
@@ -220,6 +222,7 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
             />
             <button
               onPointerDown={() => start(repsInc)}
+              aria-label="Increase reps"
               onPointerUp={stop}
               onPointerLeave={stop}
               onPointerCancel={stop}
@@ -263,7 +266,7 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
           </div>
 
           <div className="mt-[10px] flex items-center justify-center gap-[6px] border-t border-[#1E2220] pt-[9px]">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#5F665F]">RPE</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.11em] text-muted-foreground">RPE</div>
             <div className="font-mono text-[13px] text-muted-foreground">
               {rirSel == null ? '—' : rirToRpe(rirSel)}
             </div>

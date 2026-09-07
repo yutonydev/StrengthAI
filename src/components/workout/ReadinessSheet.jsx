@@ -8,17 +8,10 @@ const FIELDS = [
   { key: 'stress', label: 'Stress', min: 0, max: 10, step: 1, lo: 'Calm', hi: 'Frazzled' },
 ]
 
-/**
- * Full-height overlay rather than a bottom sheet — matches the prototype's own
- * `position:absolute;inset:0` treatment for this one screen (everything else in workout/ is
- * a slide-up Sheet).
- *
- * The width constraint is not optional. In the prototype `inset:0` resolved against the phone
- * frame; here it resolves against the viewport, so on any window wider than the column this
- * was the one surface spanning the whole screen while every other sat in 440px. Sheet.jsx
- * repeats `max-w-[440px] left-1/2 -translate-x-1/2` for the same reason and explains why —
- * this file simply never applied it.
- */
+// Full-height overlay rather than a bottom sheet, matching the prototype's inset:0 for this
+// one screen. The width constraint is not optional: in the prototype inset:0 resolved
+// against the phone frame, here against the viewport, so this was the one surface spanning
+// the whole window while every other sat in 440px. Sheet.jsx repeats it for the same reason.
 export function ReadinessSheet({ open, onSkip, onSubmit }) {
   const [values, setValues] = useState({ sleep_hours: 7, energy: 6, soreness: 3, stress: 3 })
   const [submitting, setSubmitting] = useState(false)
@@ -80,7 +73,7 @@ export function ReadinessSheet({ open, onSkip, onSubmit }) {
                 onChange={(e) => setValues((v) => ({ ...v, [f.key]: parseFloat(e.target.value) }))}
                 className="mt-2 w-full accent-primary"
               />
-              <div className="flex justify-between text-[10px] text-[#5F665F]">
+              <div className="flex justify-between text-[10px] text-muted-foreground">
                 <span>{f.lo}</span>
                 <span>{f.hi}</span>
               </div>

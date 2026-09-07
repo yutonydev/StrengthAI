@@ -1,11 +1,7 @@
 import { Dialog } from '@base-ui/react/dialog'
 
-/**
- * Shared slide-up sheet chrome. Base UI's Dialog portals to document.body, which
- * escapes the AppShell's 440px column in the DOM — so width/centering is repeated
- * here explicitly (`max-w-[440px]` + `left-1/2 -translate-x-1/2`) rather than relying
- * on being a descendant of the column.
- */
+// Shared slide-up sheet chrome. Base UI's Dialog portals to document.body, escaping
+// AppShell's 440px column, so width and centering are repeated here explicitly.
 export function Sheet({ open, onOpenChange, children }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>

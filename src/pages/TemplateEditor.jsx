@@ -132,6 +132,7 @@ export default function TemplateEditor() {
       >
         <button
           onClick={() => navigate('/workouts')}
+          aria-label="Back to workouts"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-muted-foreground"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -156,13 +157,19 @@ export default function TemplateEditor() {
             className="flex items-center gap-[10px] rounded-2xl border border-border bg-card p-[13px]"
           >
             <div className="flex flex-col gap-0.5">
-              <button onClick={() => reorder(i, -1)} disabled={i === 0} className="text-[#5F665F] disabled:opacity-30">
+              <button
+                onClick={() => reorder(i, -1)}
+                disabled={i === 0}
+                aria-label={`Move ${item.name} up`}
+                className="text-muted-graphic disabled:opacity-30"
+              >
                 <ChevronUp className="h-[15px] w-[15px]" />
               </button>
               <button
                 onClick={() => reorder(i, 1)}
                 disabled={i === items.length - 1}
-                className="text-[#5F665F] disabled:opacity-30"
+                aria-label={`Move ${item.name} down`}
+                className="text-muted-graphic disabled:opacity-30"
               >
                 <ChevronDown className="h-[15px] w-[15px]" />
               </button>
@@ -171,7 +178,11 @@ export default function TemplateEditor() {
               <div className="text-[14px] font-semibold">{item.name}</div>
               <div className="mt-0.5 text-[11px] text-muted-foreground">{item.mods}</div>
             </div>
-            <button onClick={() => removeItem(item.variantId)} className="text-[#5F665F]">
+            <button
+              onClick={() => removeItem(item.variantId)}
+              aria-label={`Remove ${item.name} from this template`}
+              className="text-muted-graphic"
+            >
               <X className="h-[17px] w-[17px]" />
             </button>
           </div>

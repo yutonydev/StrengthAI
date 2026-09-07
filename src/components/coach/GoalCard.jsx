@@ -31,7 +31,11 @@ export function GoalCard({ goal, sets, unit, onArchive, onRemove, onNext }) {
           </div>
         </div>
         {!achieved && (
-          <button onClick={onRemove} className="text-[#5F665F]">
+          <button
+          onClick={onRemove}
+          aria-label={`Remove ${variant ? canonicalLabel(variant.base) : 'this'} goal`}
+          className="text-muted-graphic"
+        >
             <X className="h-[17px] w-[17px]" />
           </button>
         )}
