@@ -177,6 +177,8 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
                 setWeight(e.target.value)
               }}
               type="number"
+              // inputMode, not type, picks the mobile keypad; weights need the decimal point.
+              inputMode="decimal"
               disabled={historyLoading}
               placeholder={historyLoading ? '' : String(weightPh)}
               className="min-w-0 flex-1 bg-transparent text-center font-mono text-[30px] tracking-[-0.04em] text-foreground outline-none disabled:opacity-50"
@@ -217,6 +219,8 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
                 setReps(e.target.value)
               }}
               type="number"
+              // Whole numbers, so no decimal point.
+              inputMode="numeric"
               placeholder={String(repsPh)}
               className="w-[58px] bg-transparent text-center font-mono text-[24px] tracking-[-0.03em] text-foreground outline-none"
             />

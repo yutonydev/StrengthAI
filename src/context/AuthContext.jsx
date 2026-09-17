@@ -10,11 +10,20 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let active = true
 
-    auth.session().then((session) => {
-      if (!active) return
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
+    auth
+      .session()
+      .then((session) => {
+        if (!active) return
+        setUser(session?.user ?? null)
+        setLoading(false)
+      })
+      // Must never leave `loading` true: an unhandled rejection here strands the app forever.
+      .catch((err) => {
+        if (!active) return
+        console.error('[auth] could not restore session', err)
+        setUser(null)
+        setLoading(false)
+      })
 
     // Session persistence itself is the supabase-js client default (see src/api/db.js);
     // this just keeps React in sync with it, including PASSWORD_RECOVERY on /reset.

@@ -79,6 +79,8 @@ export function GoalSheet({ open, onOpenChange, variants, unit, initial, onSave 
               value={target}
               onChange={(e) => setTarget(e.target.value)}
               type="number"
+              // inputMode, not type, picks the mobile keypad; a weight needs the decimal point.
+              inputMode="decimal"
               placeholder="225"
               className="mt-[3px] w-full bg-transparent font-mono text-[19px] text-foreground outline-none"
             />
@@ -89,6 +91,7 @@ export function GoalSheet({ open, onOpenChange, variants, unit, initial, onSave 
               value={reps}
               onChange={(e) => setReps(e.target.value)}
               type="number"
+              inputMode="numeric"
               placeholder="5"
               className="mt-[3px] w-full bg-transparent font-mono text-[19px] text-foreground outline-none"
             />

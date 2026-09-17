@@ -194,9 +194,49 @@
   animation: rest-pulse 0.8s ease-in-out 2;
 }
 
+/* No fill-mode, as with .screen-fade above: the stagger lives in the keyframe percentages
+   so nothing is left resting at opacity 0. */
+@keyframes preloader-rise {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.96); }
+  100% { opacity: 1; transform: none; }
+}
+
+@keyframes preloader-rise-word {
+  0%, 18% { opacity: 0; transform: translateY(6px); }
+  100%    { opacity: 1; transform: none; }
+}
+
+@keyframes preloader-rise-tagline {
+  0%, 34% { opacity: 0; transform: translateY(6px); }
+  100%    { opacity: 1; transform: none; }
+}
+
+/* Slow breath after the entrance, so a long wait reads as working. */
+@keyframes preloader-breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+.preloader-mark {
+  animation:
+    preloader-rise 0.44s cubic-bezier(0.22, 1, 0.36, 1),
+    preloader-breathe 2.4s ease-in-out 0.44s infinite;
+}
+
+.preloader-word {
+  animation: preloader-rise-word 0.54s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.preloader-tagline {
+  animation: preloader-rise-tagline 0.64s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .screen-fade,
-  .rest-pulse {
+  .rest-pulse,
+  .preloader-mark,
+  .preloader-word,
+  .preloader-tagline {
     animation: none;
   }
   button:active {

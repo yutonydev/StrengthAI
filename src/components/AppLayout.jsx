@@ -1,7 +1,9 @@
-import { Suspense } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { BottomNav } from './BottomNav'
 import { ScreenLoading } from './ScreenState'
+import { Preloader } from './Preloader'
+import { warmTabData } from '@/api/warmup'
 
 // The faded screen surface. `key={pathname}` remounts it per navigation, which is what
 // re-runs the animation. Nothing position:fixed may live inside it, and the fade animates
@@ -22,8 +24,53 @@ function FadedScreen() {
   )
 }
 
+// Specifiers must match App.jsx's `lazy()` calls so both hit the same module-cache entry.
+const prefetchTabs = () =>
+  Promise.all([
+    import('@/pages/Templates').catch(() => {}),
+    import('@/pages/Progress').catch(() => {}),
+    import('@/pages/CoachChat').catch(() => {}),
+  ])
+
+// Module scope, not state: one splash per page load, not one per remount.
+let warmed = false
+
+const MIN_MS = 650 // floor, so the splash cannot flash past
+const CAP_MS = 2500 // cap, so a slow network cannot hold the app behind it
+
+/** Holds the preloader until the chunks and query cache are warm, floored at MIN_MS and capped at CAP_MS. */
+function useWarmup() {
+  const [ready, setReady] = useState(warmed)
+
+  useEffect(() => {
+    if (warmed) return
+    let alive = true
+
+    const settle = () => {
+      if (!alive) return
+      warmed = true
+      setReady(true)
+    }
+
+    const floor = new Promise((r) => setTimeout(r, MIN_MS))
+    const cap = new Promise((r) => setTimeout(r, CAP_MS))
+    // Both halves: a warm chunk still shows ScreenLoading until its queries land.
+    Promise.race([Promise.all([prefetchTabs(), warmTabData(), floor]), cap]).then(settle)
+
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  return ready
+}
+
 /** The four tab screens: faded content, with the nav pinned outside the faded box. */
 export function AppLayout() {
+  const ready = useWarmup()
+
+  if (!ready) return <Preloader />
+
   return (
     <>
       <FadedScreen />
