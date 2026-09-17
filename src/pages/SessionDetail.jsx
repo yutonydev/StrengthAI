@@ -10,7 +10,7 @@ import {
   variants as variantsApi,
 } from '@/api/db'
 import { canonicalLabel } from '@/lib/resolver'
-import { display } from '@/lib/units'
+import { display, formatVolume } from '@/lib/units'
 import { sessionVolumeKg } from '@/lib/coach'
 import { Sheet } from '@/components/Sheet'
 import { useVariantMap } from '@/hooks/useVariantMap'
@@ -67,13 +67,12 @@ export default function SessionDetail() {
   const stats = useMemo(() => {
     if (!session) return []
     const volKg = sessionVolumeKg(sessionSets)
-    const volK = Math.round((display(volKg, unit) / 1000) * 10) / 10
     const durMin = session.ended_at
       ? Math.round((new Date(session.ended_at) - new Date(session.started_at)) / 60000)
       : null
     return [
       { label: 'Sets', value: sessionSets.length },
-      { label: 'Volume', value: `${volK}k` },
+      { label: 'Volume', value: formatVolume(volKg, unit) },
       { label: 'Time', value: durMin != null ? `${durMin}m` : '—' },
     ]
   }, [session, sessionSets, unit])

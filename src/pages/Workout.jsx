@@ -296,7 +296,14 @@ export default function Workout() {
   const handleFinish = async () => {
     setBusy(true)
     try {
+      if (sessionSets.length === 0 && !notes.trim()) {
+        await sessions.remove(sessionId)
+        localStorage.removeItem(REST_KEY)
+        navigate('/', { replace: true })
+        return
+      }
       await sessions.finish(sessionId)
+      localStorage.removeItem(REST_KEY)
       // a plan is consumed when the session finishes, not the first logged set —
       // an exercise is three or four sets, and the target shouldn't vanish mid-exercise
       const trainedIds = new Set(session?.exercise_order || [])
@@ -313,6 +320,7 @@ export default function Workout() {
     setBusy(true)
     try {
       await sessions.remove(sessionId)
+      localStorage.removeItem(REST_KEY)
       navigate('/', { replace: true })
     } catch (err) {
       setError(err.message)

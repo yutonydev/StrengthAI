@@ -10,7 +10,7 @@ import {
   variants as variantsApi,
   muscleGoals,
 } from '@/api/db'
-import { display } from '@/lib/units'
+import { volumeK } from '@/lib/units'
 import { weekRange, sessionVolumeKg } from '@/lib/coach'
 import { PART_LABELS, PART_ORDER } from '@/lib/bodyParts'
 import logo from '@/assets/logo.png'
@@ -86,7 +86,7 @@ export default function Home() {
     )
     const weekSets = allSets.filter((s) => weekSessionIds.has(s.session_id))
     const volKg = sessionVolumeKg(weekSets)
-    const volK = Math.round((display(volKg, unit) / 1000) * 10) / 10
+    const volK = volumeK(volKg, unit)
     return [
       { label: 'Sessions', value: weekSessionIds.size, unit: '' },
       { label: 'Sets', value: weekSets.length, unit: '' },
@@ -204,7 +204,11 @@ export default function Home() {
         </div>
       </button>
 
-      <div className="mt-[10px] grid grid-cols-3 gap-2">
+      <div className="mt-[14px] text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        This week
+      </div>
+
+      <div className="mt-[8px] grid grid-cols-3 gap-2">
         {weekStats.map((s) => (
           <div key={s.label} className="rounded-[14px] border border-border bg-card px-3 py-[11px]">
             <div className="font-mono text-[19px] font-medium tracking-[-0.03em]">

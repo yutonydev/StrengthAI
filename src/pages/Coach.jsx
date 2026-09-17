@@ -13,13 +13,14 @@ import {
   variants as variantsApi,
 } from '@/api/db'
 import { canonicalLabel } from '@/lib/resolver'
-import { display } from '@/lib/units'
+import { display, formatVolume } from '@/lib/units'
 import {
   BACKOFF_FACTOR,
   currentE1rm,
   detectPlateau,
   detectProgramPattern,
   matchedRirSeries,
+  readinessTrend,
   sessionVolumeKg,
   weekRange,
 } from '@/lib/coach'
@@ -150,11 +151,13 @@ export default function Coach() {
         const weekReadiness = readinessList.filter((r) => weekIds.has(r.session_id))
         const avgRpe = avg(weekSets, (s) => s.rpe)
         const trained = `You trained ${plural(weekSessions.length, 'time')} for ${plural(weekSets.length, 'set')}`
+        const slide = readinessTrend(weekReadiness)
+        const alsoSliding = slide != null && slide <= -0.5 ? ' Readiness is sliding with it.' : ''
         const recap =
           avgRpe == null
             ? `${trained}. No effort ratings logged this week, so there is nothing to say about intensity yet.`
             : avgRpe >= 8.5
-              ? `${trained} at an average RPE of ${avgRpe}. That is a hard week — most of your work sat near failure, which is why readiness is sliding.`
+              ? `${trained} at an average RPE of ${avgRpe}. That is a hard week — most of your work sat near failure.${alsoSliding}`
               : `${trained} at an average RPE of ${avgRpe}. Effort sat in a sustainable band; volume is doing the work rather than intensity.`
         reportRows.push({
           week_start: ymd(start),
@@ -548,7 +551,7 @@ export default function Coach() {
                 { k: 'Avg readiness', v: r.avg_readiness != null ? `${r.avg_readiness}/10` : '—' },
                 { k: 'Avg sleep', v: r.avg_sleep != null ? `${r.avg_sleep}h` : '—' },
                 { k: 'Avg RPE', v: r.avg_rpe ?? '—' },
-                { k: 'Volume', v: `${Math.round((display(r.volume_kg, unit) / 1000) * 10) / 10}k` },
+                { k: 'Volume', v: formatVolume(r.volume_kg, unit) },
               ]
               return (
                 <div key={r.id} className="rounded-[18px] border border-border bg-card p-[15px]">

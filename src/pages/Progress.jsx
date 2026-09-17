@@ -67,10 +67,24 @@ export default function Progress() {
     return variantList.filter((v) => used.has(v.id))
   }, [allSets, variantList])
 
+  const defaultId = useMemo(() => {
+    let best = null
+    let bestLen = 0
+    for (const v of exercisesWithSets) {
+      const rows = allSets.filter((s) => s.variant_id === v.id)
+      const len = matchedRirSeries(rows, datesBySession, excludedSessionIds).series.length
+      if (len > bestLen) {
+        best = v.id
+        bestLen = len
+      }
+    }
+    return best ?? exercisesWithSets[0]?.id ?? null
+  }, [exercisesWithSets, allSets, datesBySession, excludedSessionIds])
+
   const selectedId =
     selectedVariantId && exercisesWithSets.some((v) => v.id === selectedVariantId)
       ? selectedVariantId
-      : exercisesWithSets[0]?.id ?? null
+      : defaultId
 
   const matchedSeries = useMemo(() => {
     if (!selectedId) return []
@@ -133,6 +147,10 @@ export default function Progress() {
       <ErrorBanner error={error} className="mb-3" />
 
       <div className="mb-4 text-[22px] font-bold tracking-[-0.025em]">Progress</div>
+
+      <div className="mb-[8px] text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        All time
+      </div>
 
       <div className="mb-5 grid grid-cols-2 gap-2">
         {stats.map((s) => (
