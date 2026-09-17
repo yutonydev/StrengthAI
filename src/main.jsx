@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from '@/context/AuthContext'
 import { AppShell } from '@/components/AppShell'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import './index.css'
 import App from './App.jsx'
 
@@ -20,12 +21,14 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <AppShell>
-          <App />
-        </AppShell>
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary full>
+      <BrowserRouter>
+        <AuthProvider>
+          <AppShell>
+            <App />
+          </AppShell>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   </StrictMode>,
 )

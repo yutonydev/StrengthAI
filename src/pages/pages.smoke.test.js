@@ -35,6 +35,7 @@ describe('shared modules load', () => {
     AppLayout: () => import('../components/AppLayout.jsx'),
     ScreenState: () => import('../components/ScreenState.jsx'),
     Preloader: () => import('../components/Preloader.jsx'),
+    ErrorBoundary: () => import('../components/ErrorBoundary.jsx'),
     warmup: () => import('../api/warmup.js'),
     useExerciseOrder: () => import('../hooks/useExerciseOrder.js'),
     useVariantMap: () => import('../hooks/useVariantMap.js'),

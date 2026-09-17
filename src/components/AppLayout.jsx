@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { BottomNav } from './BottomNav'
 import { ScreenLoading } from './ScreenState'
 import { Preloader } from './Preloader'
+import { ErrorBoundary } from './ErrorBoundary'
 import { warmTabData } from '@/api/warmup'
 
 // The faded screen surface. `key={pathname}` remounts it per navigation, which is what
@@ -17,9 +18,11 @@ function FadedScreen() {
       {/* Routes are lazy (see App.jsx), so a first visit to a screen has a chunk to fetch.
           The fallback is the same placeholder a screen shows while its data loads, so the
           two phases read as one wait rather than two different ones. */}
-      <Suspense fallback={<ScreenLoading />}>
-        <Outlet />
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<ScreenLoading />}>
+          <Outlet />
+        </Suspense>
+      </ErrorBoundary>
     </div>
   )
 }

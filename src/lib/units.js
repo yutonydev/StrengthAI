@@ -21,7 +21,6 @@ export const volumeK = (kg, unit) => Math.round((display(kg, unit) / 1000) * 10)
 
 export const formatVolume = (kg, unit) => `${volumeK(kg, unit)}k ${unit}`;
 
-
 export const rirToRpe = (rir) => (rir == null ? null : Math.round((10 - rir) * 2) / 2);
 
 /**
