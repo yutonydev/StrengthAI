@@ -19,6 +19,15 @@ export function currentE1rm(sets = []) {
   return recent.length ? Math.max(...recent.map((s) => e1rm(s.weight_kg, s.reps))) : 0;
 }
 
+export function bestWeightAtReps(sets = [], reps) {
+  const eligible = sets.filter((s) => s.reps >= reps);
+  return eligible.length ? Math.max(...eligible.map((s) => s.weight_kg)) : 0;
+}
+
+export function goalHitSet(sets = [], targetKg, targetReps) {
+  return [...sets].reverse().find((s) => s.weight_kg >= targetKg && s.reps >= targetReps) ?? null;
+}
+
 // Back-off fraction for a plateaued lift. Shared: PlateauCard renders it and Coach.jsx
 // writes it into coach_plans, so drift would promise one weight and program another.
 export const BACKOFF_FACTOR = 0.88;

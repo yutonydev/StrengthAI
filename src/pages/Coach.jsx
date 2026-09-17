@@ -19,6 +19,7 @@ import {
   currentE1rm,
   detectPlateau,
   detectProgramPattern,
+  goalHitSet,
   matchedRirSeries,
   readinessTrend,
   sessionVolumeKg,
@@ -109,14 +110,11 @@ export default function Coach() {
           goalsApi.list(),
         ])
 
-      // write-on-read, same pattern as recommendation creation: the first time a
-      // goal's current e1RM clears its target, flip the row to 'achieved' so it stops
-      // being treated as in-progress
       const updatedGoals = await Promise.all(
         goalRows.map(async (g) => {
           if (g.status !== 'active') return g
-          const currentKg = currentE1rm(setRows.filter((s) => s.variant_id === g.variant_id))
-          if (currentKg < g.target_kg) return g
+          const variantSets = setRows.filter((s) => s.variant_id === g.variant_id)
+          if (!goalHitSet(variantSets, g.target_kg, g.target_reps)) return g
           const updated = await goalsApi.update(g.id, { status: 'achieved', achieved_at: new Date().toISOString() })
           return { ...g, ...updated }
         })

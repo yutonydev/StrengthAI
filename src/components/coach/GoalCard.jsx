@@ -1,23 +1,29 @@
-import { CheckCircle2, X } from 'lucide-react'
+import { CheckCircle2, Target, X } from 'lucide-react'
 import { canonicalLabel } from '@/lib/resolver'
 import { display } from '@/lib/units'
-import { currentE1rm, projectGoal } from '@/lib/coach'
+import { bestWeightAtReps, currentE1rm, goalHitSet, projectGoal } from '@/lib/coach'
 
 export function GoalCard({ goal, sets, unit, onArchive, onRemove, onNext }) {
   const variant = goal.exercise_variants
   const sorted = [...sets].sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
+
   const currentKg = currentE1rm(sorted)
-  const achieved = goal.status === 'achieved' || currentKg >= goal.target_kg
+  const bestKg = bestWeightAtReps(sorted, goal.target_reps)
+  const hitSet = goalHitSet(sorted, goal.target_kg, goal.target_reps)
+  const achieved = goal.status === 'achieved' || !!hitSet
+  const withinEstimate = !achieved && currentKg >= goal.target_kg
 
   const current = Math.round(display(currentKg, unit))
-  const pct = Math.min(100, Math.round((currentKg / goal.target_kg) * 100))
+  const pct = Math.min(100, Math.round((bestKg / goal.target_kg) * 100))
 
-  const lastSet = sorted.at(-1)
-  const reached = `Hit at ${lastSet ? `${display(lastSet.weight_kg, unit)} ${unit} × ${lastSet.reps}` : `${current} ${unit}`} — estimated, not a tested single. Test it or set the next target.`
+  const reached = hitSet
+    ? `Hit at ${display(hitSet.weight_kg, unit)} ${unit} × ${hitSet.reps}.`
+    : 'Marked as reached.'
 
-  const projection = achieved
-    ? null
-    : projectGoal({ currentKg, targetKg: goal.target_kg, history: sorted, weeksObserved: 8 })
+  const projection =
+    achieved || withinEstimate
+      ? null
+      : projectGoal({ currentKg, targetKg: goal.target_kg, history: sorted, weeksObserved: 8 })
 
   return (
     <div className="rounded-[18px] border border-border bg-card p-[15px]">
@@ -48,6 +54,23 @@ export function GoalCard({ goal, sets, unit, onArchive, onRemove, onNext }) {
       <div className="h-[6px] overflow-hidden rounded-full bg-[#22272B]">
         <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
       </div>
+      <div className="mt-[6px] text-[11px] text-muted-foreground">
+        Best at {goal.target_reps}+ reps:{' '}
+        {bestKg > 0 ? `${Math.round(display(bestKg, unit))} ${unit}` : 'nothing logged yet'}
+      </div>
+
+      {withinEstimate && (
+        <div className="mt-3 flex items-start gap-[9px] rounded-[13px] border border-[#F2B544]/30 bg-[#F2B544]/[0.08] p-3">
+          <Target className="mt-[1px] h-[17px] w-[17px] shrink-0 text-[#F2B544]" />
+          <div>
+            <div className="text-[13px] font-semibold text-[#F2B544]">Within your estimate</div>
+            <div className="mt-[3px] text-[11.5px] leading-[1.5] text-muted-foreground">
+              Your estimated 1RM has passed this, but you have not logged{' '}
+              {Math.round(display(goal.target_kg, unit))} {unit} × {goal.target_reps} yet. Go and test it.
+            </div>
+          </div>
+        </div>
+      )}
 
       {!achieved && projection && (
         <>

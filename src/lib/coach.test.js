@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   matchedRirSeries, detectPlateau, detectProgramPattern,
   projectGoal, e1rm, muscleVolume, readinessTrend, buildCoachFacts,
-  currentE1rm, BACKOFF_FACTOR,
+  currentE1rm, BACKOFF_FACTOR, bestWeightAtReps, goalHitSet,
 } from './coach.js';
 
 const set = (session_id, weight_kg, reps, rir) => ({ session_id, weight_kg, reps, rir });
@@ -566,5 +566,39 @@ describe('BACKOFF_FACTOR', () => {
   it('is the fraction the plateau card quotes and the plan writes', () => {
     // Shared so the card cannot promise one weight while coach_plans stores another.
     expect(BACKOFF_FACTOR).toBe(0.88);
+  });
+});
+
+describe('goal achievement', () => {
+  const s = (weight_kg, reps) => ({ session_id: 'x', weight_kg, reps, rir: 2 });
+
+  it('does not count a goal as hit on an estimate alone', () => {
+    const history = [s(61, 8)];
+    expect(currentE1rm(history)).toBeGreaterThan(75);
+    expect(goalHitSet(history, 84, 8)).toBeNull();
+  });
+
+  it('counts it once a real set meets both weight and reps', () => {
+    expect(goalHitSet([s(61, 8), s(84, 8)], 84, 8)).toMatchObject({ weight_kg: 84, reps: 8 });
+  });
+
+  it('accepts heavier or more reps than asked', () => {
+    expect(goalHitSet([s(90, 10)], 84, 8)).toMatchObject({ weight_kg: 90 });
+  });
+
+  it('rejects the right weight at too few reps', () => {
+    expect(goalHitSet([s(84, 5)], 84, 8)).toBeNull();
+  });
+
+  it('returns the most recent qualifying set', () => {
+    expect(goalHitSet([s(84, 8), s(95, 8)], 84, 8)).toMatchObject({ weight_kg: 95 });
+  });
+
+  it('measures progress by the best set at the target reps, not by e1rm', () => {
+    expect(bestWeightAtReps([s(61, 8), s(70, 5), s(65, 9)], 8)).toBe(65);
+  });
+
+  it('is zero when nothing reaches the target reps', () => {
+    expect(bestWeightAtReps([s(100, 3)], 8)).toBe(0);
   });
 });
