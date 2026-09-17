@@ -297,6 +297,38 @@ export function readinessTrend(readiness = [], window = 8) {
   return Math.round((mean(rows.slice(half)) - mean(rows.slice(0, half))) * 10) / 10;
 }
 
+const READINESS_FIELDS = {
+  sleepHours: 'sleep_hours',
+  energy: 'energy',
+  soreness: 'soreness',
+  stress: 'stress',
+};
+
+function fieldTrend(rows, col) {
+  const vals = rows.filter((r) => r[col] != null);
+  if (vals.length < 4) return null;
+  const half = Math.floor(vals.length / 2);
+  const mean = (a) => a.reduce((x, r) => x + Number(r[col]), 0) / (a.length || 1);
+  return Math.round((mean(vals.slice(half)) - mean(vals.slice(0, half))) * 10) / 10;
+}
+
+export function readinessDimensions(readiness = [], window = 8) {
+  const rows = readiness.slice(-window);
+  const out = {};
+  for (const [name, col] of Object.entries(READINESS_FIELDS)) {
+    const present = rows.filter((r) => r[col] != null);
+    const latestRow = [...present].reverse()[0];
+    out[name] = {
+      latest: latestRow ? Number(latestRow[col]) : null,
+      mean: present.length
+        ? Math.round((present.reduce((a, r) => a + Number(r[col]), 0) / present.length) * 10) / 10
+        : null,
+      trend: fieldTrend(rows, col),
+    };
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------- facts payload */
 
 /** A note the model reads verbatim is a note that can be long. Cap it. */
@@ -496,6 +528,7 @@ export function buildCoachFacts({
       latest: readiness.at(-1)?.score ?? null,
       trend: readinessTrend(readiness),
       entries: readiness.length,
+      dimensions: readinessDimensions(readiness),
     },
     goals: activeGoals,
     notes,

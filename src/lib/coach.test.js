@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   matchedRirSeries, detectPlateau, detectProgramPattern,
   projectGoal, e1rm, muscleVolume, readinessTrend, buildCoachFacts,
-  currentE1rm, BACKOFF_FACTOR, bestWeightAtReps, goalHitSet,
+  currentE1rm, BACKOFF_FACTOR, bestWeightAtReps, goalHitSet, readinessDimensions,
 } from './coach.js';
 
 const set = (session_id, weight_kg, reps, rir) => ({ session_id, weight_kg, reps, rir });
@@ -600,5 +600,56 @@ describe('goal achievement', () => {
 
   it('is zero when nothing reaches the target reps', () => {
     expect(bestWeightAtReps([s(100, 3)], 8)).toBe(0);
+  });
+});
+
+describe('readinessDimensions', () => {
+  const r = (sleep_hours, energy, soreness, stress) => ({ sleep_hours, energy, soreness, stress, score: 7 });
+
+  it('surfaces the latest value of each dimension, not just the composite', () => {
+    const d = readinessDimensions([r(8, 7, 2, 3), r(6, 5, 7, 8)]);
+    expect(d.sleepHours.latest).toBe(6);
+    expect(d.energy.latest).toBe(5);
+    expect(d.soreness.latest).toBe(7);
+    expect(d.stress.latest).toBe(8);
+  });
+
+  it('never averages a skipped field in as a zero', () => {
+    const d = readinessDimensions([r(8, 7, 2, 3), r(null, 5, 2, 3)]);
+    expect(d.sleepHours.mean).toBe(8);
+  });
+
+  it('reports null rather than a value when a field was never filled', () => {
+    const d = readinessDimensions([r(null, 7, 2, 3)]);
+    expect(d.sleepHours.latest).toBeNull();
+    expect(d.sleepHours.mean).toBeNull();
+  });
+
+  it('carries the last value present, skipping later blanks', () => {
+    const d = readinessDimensions([r(9, 7, 2, 3), r(null, 7, 2, 3)]);
+    expect(d.sleepHours.latest).toBe(9);
+  });
+
+  it('says nothing about a trend until there are four entries', () => {
+    const d = readinessDimensions([r(8, 7, 2, 3), r(6, 5, 4, 5), r(5, 4, 6, 7)]);
+    expect(d.sleepHours.trend).toBeNull();
+  });
+
+  it('reports a falling trend for sleep and a rising one for soreness', () => {
+    const d = readinessDimensions([r(8, 7, 2, 3), r(8, 7, 2, 3), r(6, 5, 6, 3), r(6, 5, 6, 3)]);
+    expect(d.sleepHours.trend).toBe(-2);
+    expect(d.soreness.trend).toBe(4);
+  });
+
+  it('coerces numeric strings, which is how postgres numerics can arrive', () => {
+    const d = readinessDimensions([{ sleep_hours: '7.5', energy: '6', soreness: '3', stress: '4' }]);
+    expect(d.sleepHours.latest).toBe(7.5);
+    expect(d.energy.mean).toBe(6);
+  });
+
+  it('reaches the chat through the facts payload', () => {
+    const facts = buildCoachFacts({ readiness: [r(8, 7, 2, 3), r(6, 5, 7, 8)] });
+    expect(facts.readiness.dimensions.sleepHours.latest).toBe(6);
+    expect(facts.readiness.dimensions.soreness.latest).toBe(7);
   });
 });
