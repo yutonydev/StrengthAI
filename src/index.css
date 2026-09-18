@@ -54,6 +54,14 @@
     --radius: 0.625rem;
 }
 
+/* The app column reads as a lit screen on a dark desk. Phone-width viewports sit inside the
+   column so the glow falls off-screen; this is a wide-viewport treatment. */
+.app-frame {
+  border-left: 1px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  box-shadow: 0 0 90px -18px color-mix(in srgb, var(--primary) 32%, transparent);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

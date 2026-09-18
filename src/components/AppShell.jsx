@@ -4,7 +4,7 @@ export function AppShell({ children }) {
   return (
     <div className="min-h-svh bg-[#0A0B0A]">
       <div
-        className="mx-auto min-h-svh max-w-[440px] border-x border-accent bg-background"
+        className="app-frame mx-auto min-h-svh max-w-[440px] bg-background"
         style={{
           paddingTop: 'var(--safe-top)',
           paddingBottom: 'var(--safe-bottom)',
