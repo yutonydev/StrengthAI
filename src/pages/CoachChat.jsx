@@ -73,6 +73,28 @@ function ThinkingDots() {
 
 // What the coach did, rendered from the tool result rather than its prose. If the model
 // described creating something the tool never created, the card is what the lifter believes.
+// Figures the lifter can check against their own screens: loads, rep counts, effort ratings,
+// session counts. Highlighting them is not decoration — it marks which parts of a sentence
+// came from the log rather than from the model.
+const FIGURE =
+  /((?:RIR|RPE)\s?\d+(?:\.\d+)?|\d+(?:\.\d+)?\s?(?:RIR|RPE)\b|\d+(?:\.\d+)?k?\s?(?:lb|kg)(?:\s?[×x]\s?\d+)?|\d+(?:\.\d+)?\s?[×x]\s?\d+\b|\d+(?:\.\d+)?\/10|\d+(?:\.\d+)?\s?(?:points?|sessions?|sets?|reps?|entries|hours?|h)\b)/gi
+
+function withFigures(text) {
+  // split() with one capturing group puts every match at an odd index, which avoids
+  // carrying regex lastIndex state between calls.
+  return String(text ?? '')
+    .split(FIGURE)
+    .map((part, i) =>
+      i % 2 === 1 ? (
+        <span key={i} className="font-mono text-[0.93em] text-primary">
+          {part}
+        </span>
+      ) : (
+        part
+      )
+    )
+}
+
 function ActionCard({ toolCall, onOpen }) {
   const { name, result } = toolCall
   if (!result?.ok) {
@@ -255,7 +277,7 @@ export default function CoachChat() {
                       : { borderColor: '#272C29', background: '#171A18', color: '#ECEFEA' }
                   }
                 >
-                  {m.content}
+                  {m.tone === 'capped' || m.tone === 'error' ? m.content : withFigures(m.content)}
                 </div>
                 {m.toolCall && (
                   <div className="w-full max-w-[92%]">
