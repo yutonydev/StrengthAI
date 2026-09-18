@@ -96,6 +96,19 @@ describe('detectPlateau', () => {
     expect(detectPlateau(series(3, 1, 3, 1, 3)).stability).toBe('volatile');
     expect(detectPlateau(series(3, 3, 3, 3)).stability).toBe('stable');
   });
+
+  it('calls a steady fall declining, and stalls on the same threshold', () => {
+    const r = detectPlateau(series(3, 2.5, 2));
+    expect(r.stability).toBe('declining');
+    expect(r.stalled).toBe(true);
+  });
+
+  it('never reports declining without also stalling, which is why the tile never prints it', () => {
+    for (const s of [series(3, 2.5, 2), series(3, 3, 1), series(4, 2, 1, 1, 0)]) {
+      const r = detectPlateau(s);
+      if (r.stability === 'declining') expect(r.stalled).toBe(true);
+    }
+  });
 });
 
 describe('detectProgramPattern', () => {

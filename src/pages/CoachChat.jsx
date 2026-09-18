@@ -4,7 +4,7 @@ import { AlertTriangle, ArrowUp, CalendarPlus, Dumbbell, Sparkles } from 'lucide
 import { askCoach, loadCoachFacts } from '@/api/coachChat'
 import { sets as setsApi } from '@/api/db'
 import { useQuery } from '@/hooks/useQuery'
-import { qk } from '@/api/queryCache'
+import { invalidate, qk } from '@/api/queryCache'
 import { ErrorBanner } from '@/components/ScreenState'
 import { CHAT_KEY } from '@/lib/localState'
 
@@ -168,6 +168,10 @@ export default function CoachChat() {
       }
 
       setMessages((m) => [...m, { role: 'assistant', content: reply.text, toolCall: reply.toolCall }])
+
+      // The coach can add exercises the lifter has never logged, so the cached registry is
+      // stale the moment it does; without this the new lift renders as an unknown variant.
+      if (reply.toolCall?.result?.added?.length) invalidate(qk.variants)
 
       // Staging exercises is a request to go and train them, so the session is where the
       // lifter wants to be. Delayed just enough to read the reply that explains why.

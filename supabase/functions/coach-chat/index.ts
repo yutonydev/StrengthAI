@@ -132,8 +132,22 @@ certain cause.
 WHAT YOU CAN DO
 
 You have exactly two tools: create_template and stage_session. Use them when the lifter asks
-for a workout built or an exercise queued up, and reference only variant ids that appear in
-the facts payload.
+for a workout built or an exercise queued up.
+
+Each takes one ordered list of exercises. An entry is either a variant_id from the facts
+payload, or a describe string for a movement they have never logged. Describing one resolves
+it and adds it to their registry, so you are no longer limited to what they have already
+trained. A push day with no triceps movement because they never logged one is a worse answer
+than adding a rope pushdown and saying you did.
+
+Only add what the workout they asked for actually needs. A new entry is a permanent trend
+line in their registry, not a suggestion, so four is the most you can add at once and you
+should name every one of them in your reply. Prefer a variant they already have over a new
+one describing the same movement, or you will split one lift across two trend lines.
+
+Describe the movement, never the prescription: "cable fly", not "3 sets of cable fly". If a
+description comes back unresolved the list is built without it, and you say which one and
+why rather than pretending it is there.
 
 You never write a weight, a rep count, or an RIR, and you never mark a set as logged. Those
 are entered by the lifter, always. stage_session's target_sets is a count of empty set
@@ -185,15 +199,31 @@ const TOOLS = [
           type: 'string',
           description: 'Short name for the template, e.g. "Push A" or "Lower — hinge focus".',
         },
+        exercises: {
+          type: 'array',
+          description:
+            'The exercises in the order they should be performed. Each entry is EITHER a ' +
+            'variant_id from the facts payload, OR a describe string for a movement the lifter ' +
+            'has not logged before. Describe it the way they would say it out loud — grip, ' +
+            'attachment, stance — and it is resolved and added to their registry.',
+          items: {
+            type: 'object',
+            properties: {
+              variant_id: { type: 'string', description: 'An id from the facts payload.' },
+              describe: {
+                type: 'string',
+                description: 'A movement not yet in the registry, e.g. "cable fly", "rope pushdown".',
+              },
+            },
+          },
+        },
         variant_ids: {
           type: 'array',
           items: { type: 'string' },
-          description:
-            'Exercise variant ids, in the order they should be performed. Must come from the ' +
-            'facts payload — you cannot invent an exercise the lifter has never logged.',
+          description: 'Deprecated. Prefer exercises. Ids only, in order.',
         },
       },
-      required: ['name', 'variant_ids'],
+      required: ['name', 'exercises'],
     },
   },
   {
@@ -205,10 +235,28 @@ const TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
+        exercises: {
+          type: 'array',
+          description:
+            'The exercises in the order they should be performed. Each entry is EITHER a ' +
+            'variant_id from the facts payload, OR a describe string for a movement the lifter ' +
+            'has not logged before. Describe it the way they would say it out loud — grip, ' +
+            'attachment, stance — and it is resolved and added to their registry.',
+          items: {
+            type: 'object',
+            properties: {
+              variant_id: { type: 'string', description: 'An id from the facts payload.' },
+              describe: {
+                type: 'string',
+                description: 'A movement not yet in the registry, e.g. "cable fly", "rope pushdown".',
+              },
+            },
+          },
+        },
         variant_ids: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Exercise variant ids to append, in order. Must come from the facts payload.',
+          description: 'Deprecated. Prefer exercises.',
         },
         target_sets: {
           type: 'array',
@@ -219,13 +267,17 @@ const TOOLS = [
             type: 'object',
             properties: {
               variant_id: { type: 'string' },
+              describe: {
+                type: 'string',
+                description: 'Use the same describe string when the exercise is a new one.',
+              },
               sets: { type: 'integer', minimum: 1, maximum: 10 },
             },
-            required: ['variant_id', 'sets'],
+            required: ['sets'],
           },
         },
       },
-      required: ['variant_ids'],
+      required: ['exercises'],
     },
   },
 ];
@@ -250,27 +302,158 @@ async function ownedVariantIds(admin: Admin, userId: string, ids: unknown): Prom
   return wanted.filter((id) => owned.has(id));
 }
 
-async function runCreateTemplate(admin: Admin, userId: string, input: Record<string, unknown>) {
-  const variantIds = await ownedVariantIds(admin, userId, input.variant_ids);
-  if (!variantIds.length) {
-    return { ok: false, reason: 'None of those exercises are in your registry.' };
+const MAX_NEW_EXERCISES = 4;
+const MAX_EXERCISES = 12;
+
+// The resolver stays the only thing that decides what an exercise is. Calling it over HTTP
+// rather than reimplementing it here keeps one copy of the prompt, the vocabulary, the
+// dropped-term safety net, the shared alias cache and the monthly cap.
+async function addFromDescription(
+  admin: Admin,
+  userId: string,
+  authHeader: string,
+  description: string
+) {
+  let r: Record<string, unknown> | null = null;
+  try {
+    const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/resolve-exercise`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader,
+        apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      },
+      body: JSON.stringify({ text: description, registry: [] }),
+    });
+    r = await res.json();
+  } catch (err) {
+    console.error('[coach-chat] resolver call failed', err);
+    return { ok: false, description, reason: 'I could not reach the resolver just now.' };
+  }
+
+  if (!r || r.ok === false || !r.base) {
+    return { ok: false, description, reason: String(r?.reason ?? 'that did not resolve to an exercise') };
+  }
+
+  const mods = Array.isArray(r.mods) ? [...(r.mods as string[])].sort() : [];
+  const muscles = Array.isArray(r.muscles) ? r.muscles : [];
+  const jointActions = Array.isArray(r.joint_actions) ? r.joint_actions : [];
+
+  const row: Record<string, unknown> = {
+    user_id: userId,
+    base: r.base,
+    mods,
+    muscle: r.muscle,
+    body_part: r.body_part,
+    source_text: description,
+    resolved_by: 'ai',
+    ...(r.note ? { load_note: r.note } : {}),
+    ...(r.confidence ? { confidence: r.confidence } : {}),
+    ...(muscles.length ? { muscles } : {}),
+    ...(jointActions.length ? { joint_actions: jointActions } : {}),
+  };
+
+  const { data, error } = await admin
+    .from('exercise_variants')
+    .upsert(row, { onConflict: 'user_id,base,mods' })
+    .select('id,base,mods')
+    .single();
+
+  if (error) return { ok: false, description, reason: error.message };
+  return { ok: true, description, id: data.id as string, base: data.base as string, mods: data.mods as string[] };
+}
+
+// One ordered list: each entry is an id the lifter already owns, or a description to resolve.
+// Order is the sequence the model just explained, so it is preserved across both kinds.
+async function orderedExercises(
+  admin: Admin,
+  userId: string,
+  authHeader: string,
+  input: Record<string, unknown>
+) {
+  const raw = Array.isArray(input.exercises) && input.exercises.length
+    ? (input.exercises as Record<string, unknown>[])
+    : (Array.isArray(input.variant_ids) ? input.variant_ids : []).map((id) => ({ variant_id: id }));
+
+  const entries = raw.slice(0, MAX_EXERCISES).map((e) => ({
+    variant_id: typeof e?.variant_id === 'string' ? e.variant_id : '',
+    describe: typeof e?.describe === 'string' ? (e.describe as string).trim().slice(0, 120) : '',
+  }));
+
+  const owned = new Set(
+    await ownedVariantIds(admin, userId, entries.map((e) => e.variant_id).filter(Boolean))
+  );
+
+  const wanted: string[] = [];
+  for (const e of entries) {
+    if (!e.variant_id && e.describe && !wanted.includes(e.describe)) wanted.push(e.describe);
+  }
+  const results = await Promise.all(
+    wanted.slice(0, MAX_NEW_EXERCISES).map((d) => addFromDescription(admin, userId, authHeader, d))
+  );
+  const made = new Map(results.filter((r) => r.ok).map((r) => [r.description, r]));
+
+  const ids: string[] = [];
+  const added: { name: string; mods: string[] }[] = [];
+  for (const e of entries) {
+    if (e.variant_id && owned.has(e.variant_id)) {
+      if (!ids.includes(e.variant_id)) ids.push(e.variant_id);
+      continue;
+    }
+    const m = e.describe ? made.get(e.describe) : null;
+    if (m && !ids.includes(m.id as string)) {
+      ids.push(m.id as string);
+      added.push({ name: m.base as string, mods: m.mods as string[] });
+    }
+  }
+
+  const failed = results.filter((r) => !r.ok).map((r) => ({ description: r.description, reason: r.reason }));
+  return { ids, added, failed, made };
+}
+
+async function runCreateTemplate(
+  admin: Admin,
+  userId: string,
+  authHeader: string,
+  input: Record<string, unknown>
+) {
+  const { ids, added, failed } = await orderedExercises(admin, userId, authHeader, input);
+  if (!ids.length) {
+    return {
+      ok: false,
+      reason: failed.length
+        ? `I could not add ${failed.map((f) => f.description).join(', ')}.`
+        : 'None of those exercises are in your registry.',
+      failed,
+    };
   }
 
   const name = String(input.name ?? '').trim().slice(0, 60) || 'Coach workout';
   const { data, error } = await admin
     .from('workout_templates')
-    .insert({ user_id: userId, name, exercise_order: variantIds })
+    .insert({ user_id: userId, name, exercise_order: ids })
     .select()
     .single();
 
   if (error) throw new Error(`template create failed: ${error.message}`);
-  return { ok: true, template: data, variantIds };
+  return { ok: true, template: data, variantIds: ids, added, failed };
 }
 
-async function runStageSession(admin: Admin, userId: string, input: Record<string, unknown>) {
-  const variantIds = await ownedVariantIds(admin, userId, input.variant_ids);
+async function runStageSession(
+  admin: Admin,
+  userId: string,
+  authHeader: string,
+  input: Record<string, unknown>
+) {
+  const { ids: variantIds, added: addedExercises, failed, made } = await orderedExercises(admin, userId, authHeader, input);
   if (!variantIds.length) {
-    return { ok: false, reason: 'None of those exercises are in your registry.' };
+    return {
+      ok: false,
+      reason: failed.length
+        ? `I could not add ${failed.map((f) => f.description).join(', ')}.`
+        : 'None of those exercises are in your registry.',
+      failed,
+    };
   }
 
   // A list on the wire so the tool schema stays well-typed; stored as the {variantId: count}
@@ -278,8 +461,11 @@ async function runStageSession(admin: Admin, userId: string, input: Record<strin
   const allowed = new Set(variantIds);
   const targets: Record<string, number> = {};
   for (const row of Array.isArray(input.target_sets) ? input.target_sets : []) {
-    const id = String((row as Record<string, unknown>)?.variant_id ?? '');
-    const n = Number((row as Record<string, unknown>)?.sets);
+    const r = row as Record<string, unknown>;
+    const describe = typeof r?.describe === 'string' ? r.describe.trim() : '';
+    // A freshly added exercise has no id the model could have known, so it keys by description.
+    const id = String(r?.variant_id ?? (describe ? made.get(describe)?.id ?? '' : ''));
+    const n = Number(r?.sets);
     if (allowed.has(id) && Number.isFinite(n) && n >= 1) targets[id] = Math.min(10, Math.round(n));
   }
 
@@ -308,7 +494,7 @@ async function runStageSession(admin: Admin, userId: string, input: Record<strin
       .single();
 
     if (error) throw new Error(`session start failed: ${error.message}`);
-    return { ok: true, session: data, variantIds, created: true };
+    return { ok: true, session: data, variantIds, created: true, added: addedExercises, failed };
   }
 
   // Append, skipping duplicates: the lifter may have built half the session by hand.
@@ -328,7 +514,7 @@ async function runStageSession(admin: Admin, userId: string, input: Record<strin
     .single();
 
   if (error) throw new Error(`session update failed: ${error.message}`);
-  return { ok: true, session: data, variantIds: added, created: false };
+  return { ok: true, session: data, variantIds: added, created: false, added: addedExercises, failed };
 }
 
 Deno.serve(async (req) => {
@@ -452,9 +638,9 @@ Deno.serve(async (req) => {
       try {
         const result =
           call.name === 'create_template'
-            ? await runCreateTemplate(admin, userId, input)
+            ? await runCreateTemplate(admin, userId, authHeader, input)
             : call.name === 'stage_session'
-              ? await runStageSession(admin, userId, input)
+              ? await runStageSession(admin, userId, authHeader, input)
               : { ok: false, reason: `Unknown tool ${call.name}.` };
         toolCall = { name: call.name, input, result };
       } catch (err) {
