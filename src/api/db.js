@@ -19,10 +19,14 @@ const touches = (keys, run) => async (...args) => {
 };
 
 /** Current user id, or throws — every write needs it, RLS enforces it anyway. */
+// getSession reads the stored session locally; getUser costs a network round trip and
+// serializes every caller behind supabase-js's auth lock, which turned nine parallel reads
+// into nine sequential ones. RLS is the real boundary, so a wrong id here fails at the row.
 async function uid() {
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data?.user) throw new Error('Not signed in');
-  return data.user.id;
+  const { data, error } = await supabase.auth.getSession();
+  const id = data?.session?.user?.id;
+  if (error || !id) throw new Error('Not signed in');
+  return id;
 }
 
 const ok = ({ data, error }) => {

@@ -76,6 +76,7 @@ export default function Coach() {
   // that would populate them is still running. Both are claims, and both would be false.
   const [scanned, setScanned] = useState(false)
   const [scanMsg, setScanMsg] = useState(null)
+  const [stalledCount, setStalledCount] = useState(0)
   const [goalsList, setGoalsList] = useState([])
   const [goalSheetOpen, setGoalSheetOpen] = useState(false)
   const [goalSheetInitial, setGoalSheetInitial] = useState(null)
@@ -274,6 +275,7 @@ export default function Coach() {
       setRecommendationsList(allRecs.filter((r) => r.status === 'open'))
 
       const stalledCount = perVariant.filter((pv) => pv.verdict.stalled).length
+      setStalledCount(stalledCount)
       setScanMsg(
         `Checked ${perVariant.length} variant${perVariant.length === 1 ? '' : 's'} across ${sessionList.length} session${sessionList.length === 1 ? '' : 's'} · ${stalledCount} stalled, ${programPattern.detected ? 1 : 0} program-level pattern${programPattern.detected ? '' : 's'}.`
       )
@@ -453,7 +455,11 @@ export default function Coach() {
       <div className="mb-6 flex flex-col gap-[10px]">
         {plateauRecs.length === 0 && (
           <div className="rounded-2xl border border-border bg-card p-4 text-center text-[12.5px] text-muted-foreground">
-            {scanned ? 'No stalled lifts right now.' : 'Checking your lifts…'}
+            {!scanned
+              ? 'Checking your lifts…'
+              : stalledCount > 0
+                ? `Nothing new to act on — ${stalledCount} stalled lift${stalledCount === 1 ? '' : 's'} already ${stalledCount === 1 ? 'has' : 'have'} a plan.`
+                : 'No stalled lifts right now.'}
           </div>
         )}
         {plateauRecs.map((rec) => (

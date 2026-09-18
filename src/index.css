@@ -211,24 +211,58 @@
   100%    { opacity: 1; transform: none; }
 }
 
-/* Slow breath after the entrance, so a long wait reads as working. */
-@keyframes preloader-breathe {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.55; }
+/* The halo carries the waiting, not the mark. Fading the logo itself read as the app
+   losing its grip on something rather than working on it. */
+@keyframes preloader-halo {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50%      { opacity: 1; transform: scale(1.06); }
+}
+
+/* Slower than the halo and out of phase with it, so the two never pulse in lockstep. */
+@keyframes preloader-ring {
+  0%   { opacity: 0; transform: scale(0.4); }
+  18%  { opacity: 0.55; transform: scale(0.52); }
+  75%  { opacity: 0; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+.preloader-halo {
+  position: absolute;
+  width: 210px;
+  height: 210px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--primary) 30%, transparent) 0%,
+    color-mix(in srgb, var(--primary) 11%, transparent) 42%,
+    transparent 68%
+  );
+  filter: blur(8px);
+  animation: preloader-halo 2.9s ease-in-out infinite;
+}
+
+.preloader-ring {
+  position: absolute;
+  width: 210px;
+  height: 210px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  animation: preloader-ring 2.9s cubic-bezier(0.32, 0.72, 0, 1) infinite;
 }
 
 .preloader-mark {
-  animation:
-    preloader-rise 0.44s cubic-bezier(0.22, 1, 0.36, 1),
-    preloader-breathe 2.4s ease-in-out 0.44s infinite;
+  animation: preloader-rise 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent),
+    0 10px 34px -8px color-mix(in srgb, var(--primary) 42%, transparent);
 }
 
 .preloader-word {
-  animation: preloader-rise-word 0.54s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: preloader-rise-word 0.44s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .preloader-tagline {
-  animation: preloader-rise-tagline 0.64s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: preloader-rise-tagline 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -236,7 +270,9 @@
   .rest-pulse,
   .preloader-mark,
   .preloader-word,
-  .preloader-tagline {
+  .preloader-tagline,
+  .preloader-halo,
+  .preloader-ring {
     animation: none;
   }
   button:active {

@@ -179,7 +179,11 @@ export default function Progress() {
           <div className="rounded-2xl border border-border bg-card p-[13px]">
             <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground">RIR stability</div>
             <div className="mt-1 font-mono text-[21px] font-medium tracking-[-0.03em] text-primary">
-              {plateau ? STABILITY_LABEL[plateau.stability] : 'No data'}
+              {plateau
+                ? STABILITY_LABEL[plateau.stability]
+                : matchedSeries.length
+                  ? 'Not enough yet'
+                  : 'No data'}
             </div>
           </div>
         )}

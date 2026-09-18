@@ -3,6 +3,7 @@ import {
   matchedRirSeries, detectPlateau, detectProgramPattern,
   projectGoal, e1rm, muscleVolume, readinessTrend, buildCoachFacts,
   currentE1rm, BACKOFF_FACTOR, bestWeightAtReps, goalHitSet, readinessDimensions,
+  weekRange,
 } from './coach.js';
 
 const set = (session_id, weight_kg, reps, rir) => ({ session_id, weight_kg, reps, rir });
@@ -651,5 +652,81 @@ describe('readinessDimensions', () => {
     const facts = buildCoachFacts({ readiness: [r(8, 7, 2, 3), r(6, 5, 7, 8)] });
     expect(facts.readiness.dimensions.sleepHours.latest).toBe(6);
     expect(facts.readiness.dimensions.soreness.latest).toBe(7);
+  });
+});
+
+describe('weekRange', () => {
+  const ymd = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  it('matches the week the app showed for a real session', () => {
+    const [start, end] = weekRange(new Date(2026, 8, 17));
+    expect(ymd(start)).toBe('2026-09-13');
+    expect(ymd(new Date(end.getTime() - 1))).toBe('2026-09-19');
+  });
+
+  it('always starts on a Sunday, including across month and year boundaries', () => {
+    const days = [
+      new Date(2026, 8, 17), new Date(2026, 8, 13), new Date(2026, 8, 1),
+      new Date(2026, 11, 31), new Date(2027, 0, 1), new Date(2027, 1, 28),
+      new Date(2028, 1, 29),
+    ];
+    for (const d of days) {
+      const [start] = weekRange(d);
+      expect(start.getDay()).toBe(0);
+    }
+  });
+
+  it('always contains the day it was asked about', () => {
+    const days = [
+      new Date(2026, 8, 1), new Date(2026, 11, 31), new Date(2027, 0, 1),
+      new Date(2026, 8, 17, 23, 59, 59),
+    ];
+    for (const d of days) {
+      const [start, end] = weekRange(d);
+      expect(start.getTime()).toBeLessThanOrEqual(d.getTime());
+      expect(d.getTime()).toBeLessThan(end.getTime());
+    }
+  });
+
+  it('spans exactly seven days', () => {
+    const [start, end] = weekRange(new Date(2026, 8, 17));
+    expect(Math.round((end - start) / 86400000)).toBe(7);
+  });
+
+  it('starts at midnight, so a late-evening session lands in its own week', () => {
+    const [start] = weekRange(new Date(2026, 8, 17, 23, 59));
+    expect(start.getHours()).toBe(0);
+    expect(start.getMinutes()).toBe(0);
+    expect(start.getSeconds()).toBe(0);
+  });
+
+  it('is half open, so consecutive weeks abut without overlapping', () => {
+    const [, end] = weekRange(new Date(2026, 8, 17));
+    const [nextStart] = weekRange(end);
+    expect(nextStart.getTime()).toBe(end.getTime());
+  });
+});
+
+describe('matchedRirSeries across weeks', () => {
+  const set = (session_id, weight_kg, reps, rir) => ({ session_id, weight_kg, reps, rir });
+
+  it('orders by date, not by the order sessions happen to arrive', () => {
+    const dates = { late: '2027-01-05', early: '2026-12-20', mid: '2026-12-28' };
+    const { series } = matchedRirSeries(
+      [set('late', 84, 8, 1), set('early', 84, 8, 3), set('mid', 84, 8, 2)],
+      dates
+    );
+    expect(series.map((p) => p.sessionId)).toEqual(['early', 'mid', 'late']);
+    expect(series.map((p) => p.rir)).toEqual([3, 2, 1]);
+  });
+
+  it('still reads a stall when the sessions straddle a year boundary', () => {
+    const dates = { a: '2026-12-20', b: '2026-12-28', c: '2027-01-05' };
+    const { series } = matchedRirSeries(
+      [set('a', 84, 8, 3), set('b', 84, 8, 2), set('c', 84, 8, 1)],
+      dates
+    );
+    expect(detectPlateau(series).stalled).toBe(true);
   });
 });

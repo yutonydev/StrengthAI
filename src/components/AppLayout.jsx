@@ -38,7 +38,11 @@ const prefetchTabs = () =>
 // Module scope, not state: one splash per page load, not one per remount.
 let warmed = false
 
-const MIN_MS = 650 // floor, so the splash cannot flash past
+// Measured from app boot, not from this component mounting. ProtectedRoute shows the same
+// splash while the session restores, so counting from mount made the wait auth + MIN_MS.
+const BOOT_AT = performance.now()
+
+const MIN_MS = 1600 // floor: the wordmark lands by ~500ms, so this leaves it readable
 const CAP_MS = 2500 // cap, so a slow network cannot hold the app behind it
 
 /** Holds the preloader until the chunks and query cache are warm, floored at MIN_MS and capped at CAP_MS. */
@@ -55,7 +59,7 @@ function useWarmup() {
       setReady(true)
     }
 
-    const floor = new Promise((r) => setTimeout(r, MIN_MS))
+    const floor = new Promise((r) => setTimeout(r, Math.max(0, MIN_MS - (performance.now() - BOOT_AT))))
     const cap = new Promise((r) => setTimeout(r, CAP_MS))
     // Both halves: a warm chunk still shows ScreenLoading until its queries land.
     Promise.race([Promise.all([prefetchTabs(), warmTabData(), floor]), cap]).then(settle)
