@@ -98,7 +98,7 @@ function SetRow({ set, unit, onDelete }) {
   )
 }
 
-export function ExerciseBlock({ block, index, total, unit, onReorder, onRemove, onDeleteSet, onLogSet }) {
+export function ExerciseBlock({ block, index, total, unit, onReorder, onRemove, onDeleteSet, onLogSet, onDropPlannedSet }) {
   // Empty prompts the coach planned but the lifter hasn't filled in yet. These are
   // placeholders and nothing else — every number in them is a dash until the lifter types
   // one. A staged set is a plan; only a logged set is a fact.
@@ -220,18 +220,29 @@ export function ExerciseBlock({ block, index, total, unit, onReorder, onRemove, 
           ))}
 
           {Array.from({ length: pending }, (_, i) => (
-            <button
+            <div
               key={`pending-${i}`}
-              onClick={onLogSet}
-              className="grid w-full grid-cols-[20px_1fr_46px_42px_42px_24px] items-center gap-[6px] border-t border-dashed border-accent py-[7px] text-left font-mono text-[13px] text-muted-foreground"
+              className="grid w-full grid-cols-[20px_1fr_46px_42px_42px_24px] items-center gap-[6px] border-t border-dashed border-accent py-[7px] font-mono text-[13px] text-muted-foreground"
             >
-              <div>{block.sets.length + i + 1}</div>
-              <div>—</div>
-              <div>—</div>
-              <div>—</div>
-              <div>—</div>
-              <div />
-            </button>
+              <button
+                onClick={onLogSet}
+                aria-label={`Log set ${block.sets.length + i + 1}`}
+                className="col-span-5 grid grid-cols-[20px_1fr_46px_42px_42px] items-center gap-[6px] text-left"
+              >
+                <div>{block.sets.length + i + 1}</div>
+                <div>—</div>
+                <div>—</div>
+                <div>—</div>
+                <div>—</div>
+              </button>
+              <button
+                onClick={onDropPlannedSet}
+                aria-label={`Remove planned set ${block.sets.length + i + 1}`}
+                className="tap-target flex justify-end text-muted-graphic"
+              >
+                <X className="h-[14px] w-[14px]" />
+              </button>
+            </div>
           ))}
         </div>
       )}

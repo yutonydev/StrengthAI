@@ -293,6 +293,23 @@ export default function Workout() {
     }
   }
 
+  const dropPlannedSet = async (variantId) => {
+    const planned = session?.target_sets?.[variantId]
+    if (!planned) return
+    const logged = sessionSets.filter((s) => s.variant_id === variantId).length
+    const next = planned - 1
+    const targets = { ...(session.target_sets || {}) }
+    if (next <= logged) delete targets[variantId]
+    else targets[variantId] = next
+
+    setSession((s) => ({ ...s, target_sets: targets }))
+    try {
+      await sessions.update(sessionId, { target_sets: targets })
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   const handleFinish = async () => {
     setBusy(true)
     try {
@@ -382,6 +399,7 @@ export default function Workout() {
             onRemove={() => removeExercise(block.variantId)}
             onDeleteSet={deleteSet}
             onLogSet={() => setLogVariantId(block.variantId)}
+            onDropPlannedSet={() => dropPlannedSet(block.variantId)}
           />
         ))}
 
