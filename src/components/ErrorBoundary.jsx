@@ -20,7 +20,7 @@ export class ErrorBoundary extends Component {
 
     return (
       <div
-        className={`flex ${this.props.full ? 'min-h-svh' : 'min-h-full'} flex-col items-center justify-center gap-[10px] bg-background px-6 text-center`}
+        className={`flex ${this.props.full ? 'min-h-dvh' : 'min-h-full'} flex-col items-center justify-center gap-[10px] bg-background px-6 text-center`}
       >
         <div className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">
           This screen hit an error

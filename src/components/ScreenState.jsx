@@ -1,12 +1,12 @@
 // The loading placeholder and error banner every screen needs. Both were copy-pasted into
 // seven and eight files, with the class lists drifting as they went.
 
-// Loading placeholder. `full` gives min-h-svh for routes that own the whole viewport; the
+// Loading placeholder. `full` gives min-h-dvh for routes that own the whole viewport; the
 // default min-h-full is for tab screens inside AppShell's already-sized column.
 export function ScreenLoading({ full = false }) {
   return (
     <div
-      className={`flex ${full ? 'min-h-svh' : 'min-h-full'} items-center justify-center bg-background text-muted-foreground`}
+      className={`flex ${full ? 'min-h-dvh' : 'min-h-full'} items-center justify-center bg-background text-muted-foreground`}
     >
       Loading…
     </div>

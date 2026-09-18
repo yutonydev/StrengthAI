@@ -127,7 +127,7 @@ export default function Settings() {
   const goalByPart = new Map(mgoals.map((g) => [g.body_part, g.weekly_target]))
 
   return (
-    <div className="flex min-h-svh flex-col bg-background text-foreground">
+    <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <div
         className="sticky z-20 flex items-center gap-[10px] border-b border-accent bg-background/90 px-[14px] py-[10px] backdrop-blur-md"
         style={{ top: 'var(--safe-top)' }}

@@ -6,7 +6,7 @@ export function Preloader() {
   return (
     <output
       aria-label="Loading StrengthAI"
-      className="flex min-h-svh flex-col items-center justify-center bg-background text-foreground"
+      className="flex min-h-dvh flex-col items-center justify-center bg-background text-foreground"
     >
       <div className="relative flex h-[210px] w-[210px] items-center justify-center">
         <div className="preloader-halo" aria-hidden="true" />

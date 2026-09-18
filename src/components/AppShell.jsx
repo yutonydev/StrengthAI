@@ -2,9 +2,9 @@
 // column on desktop. Safe-area insets live here once, since this column *is* the screen.
 export function AppShell({ children }) {
   return (
-    <div className="min-h-svh bg-[#0A0B0A]">
+    <div className="min-h-dvh bg-[#0A0B0A]">
       <div
-        className="app-frame mx-auto min-h-svh max-w-[440px] bg-background"
+        className="app-frame mx-auto min-h-dvh max-w-[440px] bg-background"
         style={{
           paddingTop: 'var(--safe-top)',
           paddingBottom: 'var(--safe-bottom)',
