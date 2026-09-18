@@ -19,7 +19,7 @@ import { useQuery } from '@/hooks/useQuery'
 import { qk } from '@/api/queryCache'
 import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
 
-const STABILITY_LABEL = { declining: 'Declining', volatile: 'Volatile', stable: 'Stable' }
+const STABILITY_LABEL = { volatile: 'Volatile', stable: 'Stable' }
 
 // Stable identity for the not-yet-loaded case, so `?? EMPTY` doesn't hand the memos
 // below a brand-new array on every render.

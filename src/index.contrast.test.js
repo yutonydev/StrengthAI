@@ -10,7 +10,7 @@ const css = readFileSync(
   'utf-8'
 );
 
-// Hex only, first occurrence wins: index.css also has a leftover shadcn oklch block.
+// Hex only: every live token is a hex literal, so a non-hex value means the palette moved.
 const tokens = {};
 for (const [, name, hex] of css.matchAll(/--([a-z-]+):\s*(#[0-9A-Fa-f]{6})\s*;/g)) {
   if (!(name in tokens)) tokens[name] = hex;
