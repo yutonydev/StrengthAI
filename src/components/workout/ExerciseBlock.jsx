@@ -13,8 +13,20 @@ const SPRING = 'cubic-bezier(.34,1.56,.64,1)'
 // Movement under this still counts as a tap, which opens the set for editing.
 const TAP_SLOP = 8
 
+// Marks a set that beat every earlier set on its lift. Decorative: the row's label says it.
+export function RecordBadge() {
+  return (
+    <span
+      aria-hidden="true"
+      className="rounded-[5px] bg-primary/15 px-[5px] py-px font-sans text-[9px] font-bold uppercase tracking-[0.06em] text-primary"
+    >
+      PR
+    </span>
+  )
+}
+
 // One logged set: tap the numbers to edit, swipe left to delete.
-function SetRow({ set, unit, onDelete, onEdit }) {
+function SetRow({ set, unit, record, onDelete, onEdit }) {
   const [x, setX] = useState(0)
   const [swiping, setSwiping] = useState(false)
   const startX = useRef(0)
@@ -110,13 +122,16 @@ function SetRow({ set, unit, onDelete, onEdit }) {
         <button
           onClick={edit}
           disabled={!editable}
-          aria-label={`Edit set ${set.set_number}`}
+          aria-label={`Edit set ${set.set_number}${record ? ', a new best' : ''}`}
           className="col-span-5 grid grid-cols-[20px_1fr_46px_42px_42px] items-center gap-[6px] text-left"
         >
           <div className="text-muted-foreground">{set.set_number}</div>
-          <div>
-            {display(set.weight_kg, unit)}
-            <span className="ml-0.5 font-sans text-[10px] text-muted-foreground">{unit}</span>
+          <div className="flex items-center gap-1.5">
+            <span>
+              {display(set.weight_kg, unit)}
+              <span className="ml-0.5 font-sans text-[10px] text-muted-foreground">{unit}</span>
+            </span>
+            {record && <RecordBadge />}
           </div>
           <div>{set.reps}</div>
           <div className={set.rir != null && set.rir <= 1 ? 'text-[#F2B544]' : ''}>{set.rir ?? '—'}</div>
@@ -135,7 +150,7 @@ function SetRow({ set, unit, onDelete, onEdit }) {
   )
 }
 
-export function ExerciseBlock({ block, index, total, unit, onReorder, onRemove, onDeleteSet, onEditSet, onLogSet, onDropPlannedSet }) {
+export function ExerciseBlock({ block, index, total, unit, records, onReorder, onRemove, onDeleteSet, onEditSet, onLogSet, onDropPlannedSet }) {
   // Empty prompts the coach planned but the lifter hasn't filled in yet. These are
   // placeholders and nothing else — every number in them is a dash until the lifter types
   // one. A staged set is a plan; only a logged set is a fact.
@@ -253,7 +268,14 @@ export function ExerciseBlock({ block, index, total, unit, onReorder, onRemove, 
             <div />
           </div>
           {block.sets.map((s) => (
-            <SetRow key={s.id} set={s} unit={unit} onDelete={() => onDeleteSet(s.id)} onEdit={() => onEditSet(s)} />
+            <SetRow
+              key={s.id}
+              set={s}
+              unit={unit}
+              record={records?.has(s.id)}
+              onDelete={() => onDeleteSet(s.id)}
+              onEdit={() => onEditSet(s)}
+            />
           ))}
 
           {Array.from({ length: pending }, (_, i) => (

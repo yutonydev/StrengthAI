@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
-import { ArrowLeft, Pencil, ShieldOff, Trash2 } from 'lucide-react'
+import { ArrowLeft, Minus, Pencil, ShieldOff, Trash2, TrendingDown, TrendingUp, Trophy } from 'lucide-react'
 import {
   flags as flagsApi,
   profile as profileApi,
@@ -11,9 +11,10 @@ import {
 } from '@/api/db'
 import { canonicalLabel } from '@/lib/resolver'
 import { display, formatVolume } from '@/lib/units'
-import { sessionVolumeKg } from '@/lib/coach'
+import { sessionSummary, sessionVolumeKg } from '@/lib/coach'
 import { Sheet } from '@/components/Sheet'
 import { SetLoggerSheet } from '@/components/workout/SetLoggerSheet'
+import { RecordBadge } from '@/components/workout/ExerciseBlock'
 import { useVariantMap } from '@/hooks/useVariantMap'
 import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
 import { useQuery } from '@/hooks/useQuery'
@@ -21,9 +22,38 @@ import { forget, invalidate, qk, setQueryData } from '@/api/queryCache'
 
 const EMPTY = Object.freeze([])
 
+// Today's top set against the last session that trained this lift. States a direction only
+// when the comparison is like-for-like (see compareTopSets); otherwise it just shows both.
+function LastTime({ lift, setLine }) {
+  if (!lift?.top) return null
+  if (!lift.lastTop) {
+    return <div className="mt-1.5 text-[11.5px] text-muted-foreground">First time logging this lift</div>
+  }
+  const when = new Date(lift.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const Icon = lift.trend === 'up' ? TrendingUp : lift.trend === 'down' ? TrendingDown : Minus
+  const verb =
+    lift.trend === 'up' ? 'up from' : lift.trend === 'down' ? 'down from' : lift.trend === 'same' ? 'same as' : 'last time'
+  return (
+    <div className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+      {lift.trend && (
+        <Icon
+          aria-hidden="true"
+          className={`h-[13px] w-[13px] shrink-0 ${lift.trend === 'up' ? 'text-primary' : 'text-muted-graphic'}`}
+        />
+      )}
+      <span>
+        Top set <span className="font-mono text-foreground">{setLine(lift.top)}</span>, {verb}{' '}
+        <span className="font-mono">{setLine(lift.lastTop)}</span> on {when}
+      </span>
+    </div>
+  )
+}
+
 export default function SessionDetail() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
+  // Set by Workout's Finish, so the lifter lands on a summary of what they just did.
+  const justFinished = useLocation().state?.finished === true
 
   const [actionError, setError] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -40,6 +70,8 @@ export default function SessionDetail() {
   const setsQ = useQuery(setsKey, () => setsApi.forSession(sessionId))
   const variantsQ = useQuery(qk.variants, () => variantsApi.list())
   const excludedQ = useQuery(qk.excludedFlags, () => flagsApi.byStatus('excluded'))
+  // Full history, for records and "last time". Never waited on: the session renders without it.
+  const historyQ = useQuery(qk.sets, () => setsApi.all())
 
   const unit = profileQ.data?.unit ?? 'lb'
   const session = sessionQ.data ?? null
@@ -71,6 +103,18 @@ export default function SessionDetail() {
       { label: 'Time', value: durMin != null ? `${durMin}m` : '—' },
     ]
   }, [session, sessionSets, unit])
+
+  const summary = useMemo(
+    () => sessionSummary({ session, sessionSets, allSets: historyQ.data ?? EMPTY }),
+    [session, sessionSets, historyQ.data]
+  )
+  // Until history arrives, "no new bests" and "first time" would be guesses, so say neither.
+  const historyReady = historyQ.data !== undefined
+  const liftByVariant = useMemo(
+    () => new Map(summary.lifts.map((l) => [l.variantId, l])),
+    [summary]
+  )
+  const setLine = (set) => `${display(set.weight_kg, unit)} ${unit} × ${set.reps}`
 
   const blocks = useMemo(() => {
     const order = session?.exercise_order || []
@@ -194,25 +238,65 @@ export default function SessionDetail() {
           ))}
         </div>
 
+        {(justFinished || summary.records.length > 0) && (
+          <div className="rounded-2xl border border-primary/30 bg-primary/[0.06] p-[13px]">
+            {justFinished && <div className="text-[15px] font-bold tracking-[-0.01em]">Workout complete</div>}
+            {summary.records.length > 0 ? (
+              <>
+                <div
+                  className={`${justFinished ? 'mt-2 ' : ''}text-[10px] font-semibold uppercase tracking-[0.12em] text-primary`}
+                >
+                  New best{summary.records.length === 1 ? '' : 's'}
+                </div>
+                <div className="mt-1.5 flex flex-col gap-[6px]">
+                  {summary.records.map((r) => (
+                    <div key={r.variantId} className="flex items-center gap-2 text-[13px]">
+                      <Trophy className="h-[14px] w-[14px] shrink-0 text-primary" />
+                      <span className="min-w-0 flex-1 truncate font-semibold">
+                        {canonicalLabel(variantById.get(r.variantId)?.base || '')}
+                      </span>
+                      <span className="shrink-0 font-mono text-[12.5px]">{setLine(r.set)}</span>
+                      <span className="w-[74px] shrink-0 text-right text-[10.5px] text-muted-foreground">
+                        {r.kind === 'weight' ? 'heaviest yet' : 'best est. max'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              historyReady && (
+                <div className="mt-1 text-[12.5px] leading-[1.5] text-muted-foreground">
+                  No new bests this time. Every set still counts toward your trends.
+                </div>
+              )
+            )}
+          </div>
+        )}
+
         {blocks.map((block) => (
           <div key={block.variantId} className="rounded-2xl border border-border bg-card p-[13px]">
             <div className="text-[14px] font-semibold tracking-[-0.01em]">{block.name}</div>
             <div className="mt-0.5 text-[11px] text-muted-foreground">{block.mods}</div>
+            {historyReady && <LastTime lift={liftByVariant.get(block.variantId)} setLine={setLine} />}
             <div className="mt-2">
-              {block.sets.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => setEditingSet(s.raw)}
-                  aria-label={`Edit set ${s.n}: ${s.line}`}
-                  className="flex w-full items-center justify-between gap-3 border-t border-accent py-[7px] text-left font-mono text-[12.5px]"
-                >
-                  <span className="text-muted-foreground">{s.n}</span>
-                  <span className="flex items-center gap-2">
-                    {s.line}
-                    <Pencil className="h-[12px] w-[12px] text-muted-graphic" />
-                  </span>
-                </button>
-              ))}
+              {block.sets.map((s) => {
+                const record = summary.recordsById.has(s.id)
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setEditingSet(s.raw)}
+                    aria-label={`Edit set ${s.n}: ${s.line}${record ? ', a new best' : ''}`}
+                    className="flex w-full items-center justify-between gap-3 border-t border-accent py-[7px] text-left font-mono text-[12.5px]"
+                  >
+                    <span className="text-muted-foreground">{s.n}</span>
+                    <span className="flex items-center gap-2">
+                      {record && <RecordBadge />}
+                      {s.line}
+                      <Pencil className="h-[12px] w-[12px] text-muted-graphic" />
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         ))}

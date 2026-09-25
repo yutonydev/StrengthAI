@@ -12,6 +12,7 @@ import {
   variants as variantsApi,
 } from '@/api/db'
 import { canonicalLabel } from '@/lib/resolver'
+import { personalRecords } from '@/lib/coach'
 import { display } from '@/lib/units'
 import { ExerciseBlock } from '@/components/workout/ExerciseBlock'
 import { AddExerciseSheet } from '@/components/workout/AddExerciseSheet'
@@ -136,6 +137,13 @@ export default function Workout() {
     openPlans.forEach((p) => map.set(p.variant_id, p))
     return map
   }, [openPlans])
+
+  // Records against full history. This session's rows come from local state, not the history
+  // copy, so a set shows as a new best the moment it is logged or corrected.
+  const records = useMemo(
+    () => personalRecords([...allSets.filter((s) => s.session_id !== sessionId), ...sessionSets]),
+    [allSets, sessionSets, sessionId]
+  )
 
   // One sheet serves both logging a new set and correcting an existing one.
   const sheetVariantId = editingSet?.variant_id ?? logVariantId
@@ -350,7 +358,8 @@ export default function Workout() {
       const trainedIds = new Set(session?.exercise_order || [])
       const consumed = openPlans.filter((p) => trainedIds.has(p.variant_id))
       await Promise.all(consumed.map((p) => plansApi.consume(p.id)))
-      navigate('/', { replace: true })
+      // Straight to the summary of what was just done, rather than back to where it started.
+      navigate(`/session/${sessionId}`, { replace: true, state: { finished: true } })
     } catch (err) {
       setError(err.message)
       setBusy(false)
@@ -428,6 +437,7 @@ export default function Workout() {
             index={i}
             total={blocks.length}
             unit={unit}
+            records={records}
             onReorder={(direction) => reorder(i, direction)}
             onRemove={() => removeExercise(block.variantId)}
             onDeleteSet={deleteSet}

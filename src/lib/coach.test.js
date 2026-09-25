@@ -3,7 +3,7 @@ import {
   matchedRirSeries, detectPlateau, detectProgramPattern,
   projectGoal, e1rm, muscleVolume, readinessTrend, buildCoachFacts,
   currentE1rm, BACKOFF_FACTOR, bestWeightAtReps, goalHitSet, readinessDimensions,
-  weekRange, weeklyReports,
+  weekRange, weeklyReports, personalRecords, topSet, compareTopSets, sessionSummary,
 } from './coach.js';
 
 const set = (session_id, weight_kg, reps, rir) => ({ session_id, weight_kg, reps, rir });
@@ -801,5 +801,191 @@ describe('weeklyReports', () => {
   it('looks back no further than the window', () => {
     const old = [{ id: 'z', started_at: at(2025, 1, 1) }];
     expect(weeklyReports({ sessions: old, sets: [], now })).toEqual([]);
+  });
+});
+
+// A set at a point in time. `t` is minutes from an arbitrary origin, so order is explicit.
+const logged = (id, variant_id, weight_kg, reps, t, session_id = 's') => ({
+  id, variant_id, weight_kg, reps, session_id,
+  logged_at: new Date(Date.UTC(2026, 0, 1, 0, t)).toISOString(),
+});
+
+describe('personalRecords', () => {
+  it('never calls the first set on a lift a record — there was nothing to beat', () => {
+    expect(personalRecords([logged('a', 'v', 100, 5, 1)]).size).toBe(0);
+  });
+
+  it('flags a heavier set as a weight record', () => {
+    const r = personalRecords([logged('a', 'v', 100, 5, 1), logged('b', 'v', 102.5, 5, 2)]);
+    expect(r.get('b')).toEqual({ weight: true, e1rm: true });
+  });
+
+  it('flags more reps at the same weight as an e1RM record, not a weight record', () => {
+    const r = personalRecords([logged('a', 'v', 100, 5, 1), logged('b', 'v', 100, 7, 2)]);
+    expect(r.get('b')).toEqual({ weight: false, e1rm: true });
+  });
+
+  it('does not flag a set that only ties the best', () => {
+    const r = personalRecords([logged('a', 'v', 100, 5, 1), logged('b', 'v', 100, 5, 2)]);
+    expect(r.has('b')).toBe(false);
+  });
+
+  it('will not let a high-rep set claim a strength record', () => {
+    // 60 × 20 estimates higher than 80 × 5 under Epley, but that is Epley drifting, not strength.
+    const r = personalRecords([logged('a', 'v', 80, 5, 1), logged('b', 'v', 60, 20, 2)]);
+    expect(r.has('b')).toBe(false);
+  });
+
+  it('does not let a high-rep set raise the bar either', () => {
+    const r = personalRecords([
+      logged('a', 'v', 80, 5, 1),
+      logged('b', 'v', 60, 20, 2),
+      logged('c', 'v', 82.5, 5, 3),
+    ]);
+    expect(r.get('c').e1rm).toBe(true);
+  });
+
+  it('still counts a heavier high-rep set as a weight record', () => {
+    const r = personalRecords([logged('a', 'v', 80, 5, 1), logged('b', 'v', 85, 12, 2)]);
+    expect(r.get('b')).toEqual({ weight: true, e1rm: false });
+  });
+
+  it('ranks by time, not by the order rows arrive in', () => {
+    const r = personalRecords([logged('b', 'v', 102.5, 5, 2), logged('a', 'v', 100, 5, 1)]);
+    expect(r.has('b')).toBe(true);
+    expect(r.has('a')).toBe(false);
+  });
+
+  it('keeps lifts separate', () => {
+    const r = personalRecords([logged('a', 'bench', 100, 5, 1), logged('b', 'squat', 60, 5, 2)]);
+    expect(r.size).toBe(0);
+  });
+
+  it('flags each set in a session that beat everything before it', () => {
+    const r = personalRecords([
+      logged('a', 'v', 100, 5, 1, 'old'),
+      logged('b', 'v', 102.5, 5, 2),
+      logged('c', 'v', 105, 5, 3),
+    ]);
+    expect([...r.keys()]).toEqual(['b', 'c']);
+  });
+
+  it('re-ranks later sets when an earlier one is corrected upward', () => {
+    const sets = [logged('a', 'v', 100, 5, 1), logged('b', 'v', 102.5, 5, 2)];
+    expect(personalRecords(sets).has('b')).toBe(true);
+    sets[0] = { ...sets[0], weight_kg: 105 };
+    expect(personalRecords(sets).has('b')).toBe(false);
+  });
+
+  it('re-ranks later sets when an earlier record is deleted', () => {
+    const sets = [logged('a', 'v', 100, 5, 1), logged('x', 'v', 110, 5, 2), logged('b', 'v', 105, 5, 3)];
+    expect(personalRecords(sets).has('b')).toBe(false);
+    expect(personalRecords(sets.filter((s) => s.id !== 'x')).has('b')).toBe(true);
+  });
+});
+
+describe('topSet', () => {
+  it('takes the heaviest, then the most reps at that weight', () => {
+    const t = topSet([logged('a', 'v', 100, 8, 1), logged('b', 'v', 110, 3, 2), logged('c', 'v', 110, 5, 3)]);
+    expect(t.id).toBe('c');
+  });
+
+  it('is null for no sets', () => {
+    expect(topSet([])).toBeNull();
+  });
+});
+
+describe('compareTopSets', () => {
+  const t = (weight_kg, reps) => ({ weight_kg, reps });
+
+  it('compares weight at the same reps', () => {
+    expect(compareTopSets(t(102.5, 5), t(100, 5))).toBe('up');
+    expect(compareTopSets(t(97.5, 5), t(100, 5))).toBe('down');
+    expect(compareTopSets(t(100, 5), t(100, 5))).toBe('same');
+  });
+
+  it('compares reps at the same weight', () => {
+    expect(compareTopSets(t(100, 7), t(100, 5))).toBe('up');
+    expect(compareTopSets(t(100, 4), t(100, 5))).toBe('down');
+  });
+
+  it('uses e1RM when reps are close and inside its range', () => {
+    // 100 × 8 ≈ 126.7 against 102.5 × 7 ≈ 126.4
+    expect(compareTopSets(t(100, 8), t(102.5, 7))).toBe('up');
+  });
+
+  it('calls a set up when it is heavier AND more reps, however far apart', () => {
+    // Found live: 60 × 5 against 44 × 1 was left without a direction.
+    expect(compareTopSets(t(60, 5), t(44, 1))).toBe('up');
+    expect(compareTopSets(t(40, 1), t(44, 6))).toBe('down');
+  });
+
+  it('makes no claim across very different rep ranges', () => {
+    // Heavier today, fewer reps: e1RM would say "down", which would be a lie about the lift.
+    expect(compareTopSets(t(110, 3), t(100, 10))).toBeNull();
+  });
+
+  it('makes no claim when either set is past the e1RM range', () => {
+    expect(compareTopSets(t(60, 15), t(62.5, 14))).toBeNull();
+  });
+
+  it('is null without a last time', () => {
+    expect(compareTopSets(t(100, 5), null)).toBeNull();
+  });
+});
+
+describe('sessionSummary', () => {
+  const session = { id: 'today', started_at: new Date(Date.UTC(2026, 0, 1, 0, 100)).toISOString() };
+  const past = [
+    logged('p1', 'bench', 100, 5, 10, 'mon'),
+    logged('p2', 'bench', 95, 5, 11, 'mon'),
+    logged('p3', 'bench', 97.5, 5, 50, 'thu'), // the most recent bench before today
+  ];
+
+  it('reports the best record per lift, not every set that beat the last', () => {
+    const today = [logged('t1', 'bench', 102.5, 5, 101, 'today'), logged('t2', 'bench', 105, 5, 102, 'today')];
+    const { records } = sessionSummary({ session, sessionSets: today, allSets: [...past, ...today] });
+    expect(records).toEqual([{ variantId: 'bench', set: today[1], kind: 'weight' }]);
+  });
+
+  it('reports an e1RM record when no set was heavier', () => {
+    const today = [logged('t1', 'bench', 100, 7, 101, 'today')];
+    const { records } = sessionSummary({ session, sessionSets: today, allSets: past });
+    expect(records).toEqual([{ variantId: 'bench', set: today[0], kind: 'e1rm' }]);
+  });
+
+  it('compares against the most recent earlier session, not the best one', () => {
+    const today = [logged('t1', 'bench', 100, 5, 101, 'today')];
+    const { lifts } = sessionSummary({ session, sessionSets: today, allSets: past });
+    expect(lifts[0].lastTop.id).toBe('p3');
+    expect(lifts[0].trend).toBe('up');
+  });
+
+  it('ignores sessions logged after this one when viewing it later', () => {
+    const today = [logged('t1', 'bench', 100, 5, 101, 'today')];
+    const later = [logged('f1', 'bench', 200, 5, 500, 'future')];
+    const { lifts, records } = sessionSummary({ session, sessionSets: today, allSets: [...past, ...later] });
+    expect(lifts[0].lastTop.id).toBe('p3');
+    expect(records).toEqual([]); // 100 × 5 tied the best that existed at the time
+  });
+
+  it('has no last time for a first-ever lift', () => {
+    const today = [logged('t1', 'squat', 60, 5, 101, 'today')];
+    const { lifts, records } = sessionSummary({ session, sessionSets: today, allSets: past });
+    expect(lifts[0]).toMatchObject({ lastTop: null, trend: null });
+    expect(records).toEqual([]);
+  });
+
+  it("trusts this session's own rows over the history copy", () => {
+    // History still holds the pre-edit 90; the session screen already holds the corrected 110.
+    const stale = [...past, logged('t1', 'bench', 90, 5, 101, 'today')];
+    const fresh = [logged('t1', 'bench', 110, 5, 101, 'today')];
+    const { lifts, records } = sessionSummary({ session, sessionSets: fresh, allSets: stale });
+    expect(lifts[0].top.weight_kg).toBe(110);
+    expect(records[0].kind).toBe('weight');
+  });
+
+  it('is empty without a session', () => {
+    expect(sessionSummary({ session: null })).toEqual({ records: [], lifts: [], recordsById: new Map() });
   });
 });

@@ -288,6 +288,128 @@ export function muscleVolume({
   };
 }
 
+/* ---------------------------------------------------------------- records */
+
+// Epley holds to about ten reps (see e1rm), so only those sets can set or hold an e1RM record.
+const E1RM_MAX_REPS = 10;
+
+const estimate = (s) => (s.reps > 0 && s.reps <= E1RM_MAX_REPS ? e1rm(s.weight_kg, s.reps) : null);
+
+const chronological = (a, b) =>
+  new Date(a.logged_at) - new Date(b.logged_at) || (a.set_number ?? 0) - (b.set_number ?? 0);
+
+/**
+ * Sets that beat everything logged before them on the same variant: `weight` for the heaviest
+ * load yet, `e1rm` for the best estimated max. The first set on a variant is a baseline, never
+ * a record. Derived from history rather than stored, so correcting or deleting a set re-ranks
+ * every set after it. Returns Map<setId, { weight, e1rm }>.
+ */
+export function personalRecords(sets = []) {
+  const byVariant = new Map();
+  for (const s of sets) {
+    if (!byVariant.has(s.variant_id)) byVariant.set(s.variant_id, []);
+    byVariant.get(s.variant_id).push(s);
+  }
+
+  const records = new Map();
+  for (const rows of byVariant.values()) {
+    rows.sort(chronological);
+    let bestWeight = null;
+    let bestE1rm = null;
+    for (const s of rows) {
+      const w = s.weight_kg || 0;
+      const est = estimate(s);
+      const weight = bestWeight != null && w > bestWeight;
+      const e1rmRecord = est != null && bestE1rm != null && est > bestE1rm;
+      if (weight || e1rmRecord) records.set(s.id, { weight, e1rm: e1rmRecord });
+      if (w > 0 && (bestWeight == null || w > bestWeight)) bestWeight = w;
+      if (est != null && (bestE1rm == null || est > bestE1rm)) bestE1rm = est;
+    }
+  }
+  return records;
+}
+
+/** A lift's top set: the heaviest, and the most reps at that weight. */
+export function topSet(sets = []) {
+  let top = null;
+  for (const s of sets) {
+    if (!top || s.weight_kg > top.weight_kg || (s.weight_kg === top.weight_kg && s.reps > top.reps)) top = s;
+  }
+  return top;
+}
+
+// e1RM only compares sets this close in reps; a triple and a set of ten test different things.
+const COMPARABLE_REPS = 2;
+
+/**
+ * Did today's top set beat last time's? Only like-for-like: same reps compares weight, same
+ * weight compares reps, one set winning on both is decided outright, otherwise e1RM when the
+ * rep counts are close and inside its reliable range. Anything else returns null — 110 × 3 against 100 × 10 is not "down", it is a
+ * different kind of set.
+ */
+export function compareTopSets(today, last) {
+  if (!today || !last) return null;
+  const sign = (d) => (d > 0 ? 'up' : d < 0 ? 'down' : 'same');
+  if (today.reps === last.reps) return sign(Math.round((today.weight_kg - last.weight_kg) * 10));
+  if (today.weight_kg === last.weight_kg) return sign(today.reps - last.reps);
+  // Heavier and more reps (or lighter and fewer) is a direction no estimate is needed for.
+  if (today.weight_kg > last.weight_kg && today.reps > last.reps) return 'up';
+  if (today.weight_kg < last.weight_kg && today.reps < last.reps) return 'down';
+  if (Math.abs(today.reps - last.reps) > COMPARABLE_REPS) return null;
+  const [a, b] = [estimate(today), estimate(last)];
+  if (a == null || b == null) return null;
+  return sign(Math.round((a - b) * 10));
+}
+
+/**
+ * What one session did against the lifter's own history: the records it set (the best one per
+ * lift — three sets each beating the last is one new best, not three), and each lift's top set
+ * against the most recent earlier session that trained it.
+ *
+ * `sessionSets` is authoritative for this session and `allSets` supplies everything else, so
+ * an optimistic or just-edited set counts before the history copy catches up. `recordsById`
+ * marks every record set, for per-set badges.
+ */
+export function sessionSummary({ session, sessionSets = [], allSets = [] }) {
+  if (!session) return { records: [], lifts: [], recordsById: new Map() };
+  const others = allSets.filter((s) => s.session_id !== session.id);
+  const recordsById = personalRecords([...others, ...sessionSets]);
+  const started = new Date(session.started_at);
+
+  const variantIds = [...new Set(sessionSets.map((s) => s.variant_id))];
+  const records = [];
+  const lifts = [];
+
+  for (const variantId of variantIds) {
+    const mine = sessionSets.filter((s) => s.variant_id === variantId);
+
+    const hits = mine.filter((s) => recordsById.has(s.id));
+    const byWeight = hits.filter((s) => recordsById.get(s.id).weight);
+    if (byWeight.length) {
+      records.push({ variantId, set: topSet(byWeight), kind: 'weight' });
+    } else if (hits.length) {
+      const best = hits.reduce((a, b) => (estimate(b) > estimate(a) ? b : a));
+      records.push({ variantId, set: best, kind: 'e1rm' });
+    }
+
+    const earlier = others.filter((s) => s.variant_id === variantId && new Date(s.logged_at) < started);
+    const lastAt = earlier.reduce((m, s) => Math.max(m, new Date(s.logged_at).getTime()), -Infinity);
+    const lastSessionId = earlier.find((s) => new Date(s.logged_at).getTime() === lastAt)?.session_id;
+    const top = topSet(mine);
+    const lastTop = lastSessionId ? topSet(earlier.filter((s) => s.session_id === lastSessionId)) : null;
+
+    lifts.push({
+      variantId,
+      top,
+      lastTop,
+      lastAt: lastTop ? new Date(lastAt).toISOString() : null,
+      trend: compareTopSets(top, lastTop),
+    });
+  }
+
+  return { records, lifts, recordsById };
+}
+
 /* ------------------------------------------------------------ weekly reports */
 
 const ymd = (d) =>

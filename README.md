@@ -129,8 +129,9 @@ and pre-loads the lifts. You can also ask the chat coach to build one.
 **Progress** shows volume per session, and RIR at matched load per exercise with a picker.
 When a lift is flagged, the stability tile becomes a link straight to its diagnosis.
 
-**Session detail** is your history. Tap any set to correct it, in a past session or the live
-one. If a session was compromised, whether by four
+**Session detail** is your history, and where Finish lands you: any new bests, and each
+lift's top set against the last time you trained it. Tap any set to correct it, in a past
+session or the live one; records and trends re-rank from the corrected number. If a session was compromised, whether by four
 hours' sleep, a flight or illness, exclude it from trends with a reason. It stays in your
 history; it just stops distorting the analysis. The app never guesses *why* a week was bad.
 You tell it.
