@@ -7,7 +7,6 @@ import {
   profile as profileApi,
   readiness as readinessApi,
   recommendations as recommendationsApi,
-  reports as reportsApi,
   sessions,
   sets as setsApi,
   variants as variantsApi,
@@ -21,9 +20,7 @@ import {
   detectProgramPattern,
   goalHitSet,
   matchedRirSeries,
-  readinessTrend,
-  sessionVolumeKg,
-  weekRange,
+  weeklyReports,
 } from '@/lib/coach'
 import { PlateauCard } from '@/components/coach/PlateauCard'
 import { GoalCard } from '@/components/coach/GoalCard'
@@ -80,13 +77,24 @@ export default function Coach() {
   const [goalsList, setGoalsList] = useState([])
   const [goalSheetOpen, setGoalSheetOpen] = useState(false)
   const [goalSheetInitial, setGoalSheetInitial] = useState(null)
-  const [reportsList, setReportsList] = useState([])
   // guards against overlapping runs — StrictMode's double effect-invoke (and a fast
   // double-tap of Scan) would otherwise race two passes against the same dedup snapshot
   // and both sides could decide independently to create a recommendation
   const runningRef = useRef(false)
 
   const variantById = useVariantMap(variantList)
+
+  // Derived, not stored: opening this screen used to upsert three report rows every time, and
+  // a stored week never saw a set corrected after it was written.
+  const reportsList = useMemo(
+    () =>
+      weeklyReports({
+        sessions: sessionsQ.data ?? EMPTY,
+        sets: allSets,
+        readiness: readinessQ.data ?? EMPTY,
+      }),
+    [sessionsQ.data, allSets, readinessQ.data]
+  )
 
   // Detection runs client-side, on load and on demand — there is no cron. Each pass only
   // writes a coach_recommendations row when the dedup rule says the episode is new.
@@ -122,58 +130,6 @@ export default function Coach() {
       )
       setGoalsList(updatedGoals)
 
-      // weekly reports — last 3 weeks with at least one session (including the
-      // current, in-progress one, matching the prototype's own w=0..2 loop), upserted
-      // so re-opening Coach later in an active week just refreshes its numbers
-      const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      // Averaged only over rows that carry the value. The old version read `s.rpe ?? 0` and
-      // averaged the zeros in, so a week where nobody rated a set reported "an average RPE
-      // of 0" — a number the lifter never entered, written into weekly_reports.
-      const avg = (arr, f) => {
-        const vals = arr.map(f).filter((v) => v != null && Number.isFinite(Number(v))).map(Number)
-        if (!vals.length) return null
-        return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10
-      }
-      const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
-      const reportRows = []
-      for (let w = 0; w < 3; w++) {
-        const anchor = new Date()
-        anchor.setDate(anchor.getDate() - w * 7)
-        const [start, end] = weekRange(anchor)
-        const weekSessions = sessionList.filter((s) => {
-          const d = new Date(s.started_at)
-          return d >= start && d < end
-        })
-        if (!weekSessions.length) continue
-        const weekIds = new Set(weekSessions.map((s) => s.id))
-        const weekSets = setRows.filter((s) => weekIds.has(s.session_id))
-        const weekReadiness = readinessList.filter((r) => weekIds.has(r.session_id))
-        const avgRpe = avg(weekSets, (s) => s.rpe)
-        const trained = `You trained ${plural(weekSessions.length, 'time')} for ${plural(weekSets.length, 'set')}`
-        const slide = readinessTrend(weekReadiness)
-        const alsoSliding = slide != null && slide <= -0.5 ? ' Readiness is sliding with it.' : ''
-        const recap =
-          avgRpe == null
-            ? `${trained}. No effort ratings logged this week, so there is nothing to say about intensity yet.`
-            : avgRpe >= 8.5
-              ? `${trained} at an average RPE of ${avgRpe}. That is a hard week — most of your work sat near failure.${alsoSliding}`
-              : `${trained} at an average RPE of ${avgRpe}. Effort sat in a sustainable band; volume is doing the work rather than intensity.`
-        reportRows.push({
-          week_start: ymd(start),
-          week_end: ymd(new Date(end.getTime() - 1)),
-          sessions_count: weekSessions.length,
-          sets_count: weekSets.length,
-          // Raw field, not `?? 0` — same reasoning as RPE above. A readiness entry with a
-          // blank sleep figure must not average in as a night of zero hours.
-          avg_readiness: avg(weekReadiness, (r) => r.score),
-          avg_sleep: avg(weekReadiness, (r) => r.sleep_hours),
-          avg_rpe: avgRpe,
-          volume_kg: sessionVolumeKg(weekSets),
-          recap,
-        })
-      }
-      await Promise.all(reportRows.map((row) => reportsApi.upsert(row)))
-      setReportsList(await reportsApi.list())
 
       const datesBySession = {}
       sessionList.forEach((s) => {
@@ -292,7 +248,9 @@ export default function Coach() {
   }, [])
 
   // Detection still runs on mount, but it no longer gates the render — `loading` comes from
-  // the cache above, so a revisit paints instantly and this pass refreshes behind it.
+  // the cache above, so a revisit paints instantly and this pass refreshes behind it. It writes
+  // only on a one-time transition: a goal crossing its target, or a plateau the dedup rule says
+  // is a new episode. Waiting for Scan would hide both until someone thought to tap it.
   useEffect(() => {
     runDetection()
   }, [runDetection])

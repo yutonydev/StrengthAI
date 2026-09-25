@@ -272,16 +272,6 @@ export const recommendations = {
     supabase.from('coach_recommendations').update(patch).eq('id', id).select().single().then(ok),
 };
 
-export const reports = {
-  list: async (limit = 12) =>
-    supabase.from('weekly_reports').select('*').eq('user_id', await uid())
-      .order('week_start', { ascending: false }).limit(limit).then(ok),
-  upsert: async (row) =>
-    supabase.from('weekly_reports')
-      .upsert({ ...row, user_id: await uid() }, { onConflict: 'user_id,week_start' })
-      .select().single().then(ok),
-};
-
 // Scale note: sets.all() pulls the whole history to compute trends client-side, which is
 // correct and fast for one lifter. When it stops being fast the fix is a `variant_stats`
 // table maintained by an insert trigger. Do not build that until it hurts.

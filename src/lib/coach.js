@@ -288,6 +288,67 @@ export function muscleVolume({
   };
 }
 
+/* ------------------------------------------------------------ weekly reports */
+
+const ymd = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Averaged only over rows that carry the value. Reading `?? 0` averaged the blanks in, so a
+// week where nobody rated a set reported "an average RPE of 0" — a number never entered.
+function avgOf(rows, pick) {
+  const vals = rows.map(pick).filter((v) => v != null && Number.isFinite(Number(v))).map(Number);
+  if (!vals.length) return null;
+  return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/**
+ * One report per recent week that had a session, newest first. Computed on demand rather than
+ * stored: a stored week is only as fresh as the last time it was written, and a corrected set
+ * in an old session would otherwise leave that week's numbers wrong for good.
+ */
+export function weeklyReports({ sessions = [], sets = [], readiness = [], weeks = 12, now = Date.now() } = {}) {
+  const reports = [];
+  for (let w = 0; w < weeks; w += 1) {
+    const anchor = new Date(now);
+    anchor.setDate(anchor.getDate() - w * 7);
+    const [start, end] = weekRange(anchor);
+    const weekSessions = sessions.filter((s) => {
+      const d = new Date(s.started_at);
+      return d >= start && d < end;
+    });
+    if (!weekSessions.length) continue;
+
+    const weekIds = new Set(weekSessions.map((s) => s.id));
+    const weekSets = sets.filter((s) => weekIds.has(s.session_id));
+    const weekReadiness = readiness.filter((r) => weekIds.has(r.session_id));
+    const avgRpe = avgOf(weekSets, (s) => s.rpe);
+    const trained = `You trained ${plural(weekSessions.length, 'time')} for ${plural(weekSets.length, 'set')}`;
+    const slide = readinessTrend(weekReadiness);
+    const alsoSliding = slide != null && slide <= -0.5 ? ' Readiness is sliding with it.' : '';
+
+    reports.push({
+      id: ymd(start),
+      week_start: ymd(start),
+      week_end: ymd(new Date(end.getTime() - 1)),
+      sessions_count: weekSessions.length,
+      sets_count: weekSets.length,
+      avg_readiness: avgOf(weekReadiness, (r) => r.score),
+      avg_sleep: avgOf(weekReadiness, (r) => r.sleep_hours),
+      avg_rpe: avgRpe,
+      volume_kg: sessionVolumeKg(weekSets),
+      recap:
+        avgRpe == null
+          ? `${trained}. No effort ratings logged this week, so there is nothing to say about intensity yet.`
+          : avgRpe >= 8.5
+            ? `${trained} at an average RPE of ${avgRpe}. That is a hard week — most of your work sat near failure.${alsoSliding}`
+            : `${trained} at an average RPE of ${avgRpe}. Effort sat in a sustainable band; volume is doing the work rather than intensity.`,
+    });
+  }
+  return reports;
+}
+
 /** Half-split trend over the most recent readiness entries. Null until there are four. */
 export function readinessTrend(readiness = [], window = 8) {
   const rows = readiness.slice(-window);

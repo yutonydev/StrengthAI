@@ -3,7 +3,7 @@ import {
   matchedRirSeries, detectPlateau, detectProgramPattern,
   projectGoal, e1rm, muscleVolume, readinessTrend, buildCoachFacts,
   currentE1rm, BACKOFF_FACTOR, bestWeightAtReps, goalHitSet, readinessDimensions,
-  weekRange,
+  weekRange, weeklyReports,
 } from './coach.js';
 
 const set = (session_id, weight_kg, reps, rir) => ({ session_id, weight_kg, reps, rir });
@@ -741,5 +741,65 @@ describe('matchedRirSeries across weeks', () => {
       dates
     );
     expect(detectPlateau(series).stalled).toBe(true);
+  });
+});
+
+describe('weeklyReports', () => {
+  // Wed 2026-03-18, local time. Sunday-start weeks: this week began Sun 03-15.
+  const now = new Date(2026, 2, 18, 12).getTime();
+  const at = (y, m, d) => new Date(y, m - 1, d, 10).toISOString();
+  const sessions = [
+    { id: 'a', started_at: at(2026, 3, 16) }, // this week
+    { id: 'b', started_at: at(2026, 3, 17) }, // this week
+    { id: 'c', started_at: at(2026, 3, 3) }, // two weeks back
+  ];
+  const s = (session_id, weight_kg, reps, rpe) => ({ session_id, weight_kg, reps, rpe });
+
+  it('reports only weeks that had a session, newest first', () => {
+    const r = weeklyReports({ sessions, sets: [], now });
+    expect(r.map((x) => x.week_start)).toEqual(['2026-03-15', '2026-03-01']);
+    expect(r[0].week_end).toBe('2026-03-21');
+    expect(r[0].sessions_count).toBe(2);
+  });
+
+  it('counts sets and volume from the week\'s own sessions only', () => {
+    const r = weeklyReports({ sessions, sets: [s('a', 100, 5, 8), s('b', 50, 10, 7), s('c', 999, 1, 9)], now });
+    expect(r[0].sets_count).toBe(2);
+    expect(r[0].volume_kg).toBe(1000);
+    expect(r[1].volume_kg).toBe(999);
+  });
+
+  it('averages RPE over rated sets only, never averaging a blank in as zero', () => {
+    const r = weeklyReports({ sessions, sets: [s('a', 100, 5, 8), s('a', 100, 5, null)], now });
+    expect(r[0].avg_rpe).toBe(8);
+  });
+
+  it('says there is nothing to say about intensity when no set was rated', () => {
+    const r = weeklyReports({ sessions, sets: [s('a', 100, 5, null)], now });
+    expect(r[0].avg_rpe).toBeNull();
+    expect(r[0].recap).toMatch(/No effort ratings logged/);
+  });
+
+  it('calls a week hard at an average RPE of 8.5 and above', () => {
+    const r = weeklyReports({ sessions, sets: [s('a', 100, 5, 9), s('b', 100, 5, 8)], now });
+    expect(r[0].recap).toMatch(/hard week/);
+  });
+
+  it('leaves readiness null rather than zero when none was logged', () => {
+    const r = weeklyReports({ sessions, sets: [], now });
+    expect(r[0].avg_readiness).toBeNull();
+    expect(r[0].avg_sleep).toBeNull();
+  });
+
+  it('reflects a corrected set immediately — nothing stored to go stale', () => {
+    const before = weeklyReports({ sessions, sets: [s('c', 100, 5, 8)], now });
+    const after = weeklyReports({ sessions, sets: [s('c', 120, 5, 8)], now });
+    expect(before[1].volume_kg).toBe(500);
+    expect(after[1].volume_kg).toBe(600);
+  });
+
+  it('looks back no further than the window', () => {
+    const old = [{ id: 'z', started_at: at(2025, 1, 1) }];
+    expect(weeklyReports({ sessions: old, sets: [], now })).toEqual([]);
   });
 });

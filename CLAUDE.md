@@ -14,7 +14,7 @@ description of what exists; this file is the accurate description of how to chan
 ```bash
 npm install
 npm run dev     # http://localhost:5173
-npm test        # vitest — 241 tests, no database or network needed
+npm test        # vitest — 249 tests, no database or network needed
 npm run lint    # oxlint; currently warnings-only, no errors
 npm run build
 ```
@@ -180,6 +180,8 @@ something, or explicitly declines to. Patterns to preserve when extending:
   quotes can be checked against the lifter's own Progress screen. The chat can do exactly
   two things: save a template, and stage exercises into a session. It cannot write a
   weight, a rep count, or an RIR.
+- `weeklyReports` is computed on demand, not stored. The `weekly_reports` table is no longer
+  written or read: a stored week went stale the moment an older set was corrected.
 - No injury/pain classification exists or is planned — cut deliberately to avoid medical
   claims. Session notes are plain text; the only related feature is a manual "exclude
   this session from trends" action where the lifter gives their own reason.
