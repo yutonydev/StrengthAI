@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
-import { ArrowLeft, ShieldOff, Trash2 } from 'lucide-react'
+import { ArrowLeft, Pencil, ShieldOff, Trash2 } from 'lucide-react'
 import {
   flags as flagsApi,
   profile as profileApi,
@@ -13,6 +13,7 @@ import { canonicalLabel } from '@/lib/resolver'
 import { display, formatVolume } from '@/lib/units'
 import { sessionVolumeKg } from '@/lib/coach'
 import { Sheet } from '@/components/Sheet'
+import { SetLoggerSheet } from '@/components/workout/SetLoggerSheet'
 import { useVariantMap } from '@/hooks/useVariantMap'
 import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
 
@@ -32,6 +33,7 @@ export default function SessionDetail() {
   const [excludeOpen, setExcludeOpen] = useState(false)
   const [excludeReason, setExcludeReason] = useState('')
   const [excluding, setExcluding] = useState(false)
+  const [editingSet, setEditingSet] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -44,7 +46,7 @@ export default function SessionDetail() {
     ])
       .then(([p, s, st, v, excludedFlags]) => {
         if (!alive) return
-        // this screen is read-only; the still-in-progress session belongs on /workout
+        // the still-in-progress session belongs on /workout
         if (s.status === 'active') {
           navigate(`/workout/${s.id}`, { replace: true })
           return
@@ -91,6 +93,7 @@ export default function SessionDetail() {
         sets: varSets.map((s, i) => ({
           id: s.id,
           n: i + 1,
+          raw: s,
           line: `${display(s.weight_kg, unit)} ${unit} × ${s.reps}${s.rir != null ? ` · RIR ${s.rir}` : ''}`,
         })),
       }
@@ -122,6 +125,32 @@ export default function SessionDetail() {
       setError(err.message)
     } finally {
       setExcluding(false)
+    }
+  }
+
+  // Past sets are corrected in place, then every trend recomputes from the fixed number.
+  const editSet = async (original, { weightKg, reps, rir, rpe }) => {
+    const patch = { weight_kg: weightKg, reps, rir, rpe }
+    setError(null)
+    setSessionSets((list) => list.map((s) => (s.id === original.id ? { ...s, ...patch } : s)))
+    try {
+      const saved = await setsApi.update(original.id, patch)
+      setSessionSets((list) => list.map((s) => (s.id === original.id ? saved : s)))
+    } catch (err) {
+      setSessionSets((list) => list.map((s) => (s.id === original.id ? original : s)))
+      setError(err.message)
+    }
+  }
+
+  const deleteSet = async (original) => {
+    const prev = sessionSets
+    setError(null)
+    setSessionSets((list) => list.filter((s) => s.id !== original.id))
+    try {
+      await setsApi.remove(original.id)
+    } catch (err) {
+      setSessionSets(prev)
+      setError(err.message)
     }
   }
 
@@ -177,13 +206,18 @@ export default function SessionDetail() {
             <div className="mt-0.5 text-[11px] text-muted-foreground">{block.mods}</div>
             <div className="mt-2">
               {block.sets.map((s) => (
-                <div
+                <button
                   key={s.id}
-                  className="flex items-center justify-between border-t border-accent py-[7px] font-mono text-[12.5px]"
+                  onClick={() => setEditingSet(s.raw)}
+                  aria-label={`Edit set ${s.n}: ${s.line}`}
+                  className="flex w-full items-center justify-between gap-3 border-t border-accent py-[7px] text-left font-mono text-[12.5px]"
                 >
                   <span className="text-muted-foreground">{s.n}</span>
-                  <span>{s.line}</span>
-                </div>
+                  <span className="flex items-center gap-2">
+                    {s.line}
+                    <Pencil className="h-[12px] w-[12px] text-muted-graphic" />
+                  </span>
+                </button>
               ))}
             </div>
           </div>
@@ -212,6 +246,20 @@ export default function SessionDetail() {
             Exclude from trends
           </button>
         )}
+
+        <SetLoggerSheet
+          open={!!editingSet}
+          onOpenChange={(v) => !v && setEditingSet(null)}
+          variantId={editingSet?.variant_id ?? null}
+          variantName={
+            editingSet ? canonicalLabel(variantById.get(editingSet.variant_id)?.base || '') : ''
+          }
+          unit={unit}
+          plan={null}
+          editing={editingSet}
+          onSave={(payload) => editSet(editingSet, payload)}
+          onDelete={() => deleteSet(editingSet)}
+        />
 
         <Sheet open={excludeOpen} onOpenChange={setExcludeOpen}>
           <div className="px-[18px] pb-6">

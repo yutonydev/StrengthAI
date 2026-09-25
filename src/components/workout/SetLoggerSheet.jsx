@@ -21,7 +21,9 @@ const RIR_SCALE = [
   { rir: 5, label: 'Easy', sub: 'Five or more — a warmup weight' },
 ]
 
-export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, unit, plan, onSave }) {
+// `editing` is a logged set to correct. Its own values fill the fields — they were entered by
+// the lifter, so this is not inference — and nothing else changes: same checks, same rules.
+export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, unit, plan, editing, onSave, onDelete }) {
   const { start, stop } = useHoldRepeat()
   const [weight, setWeight] = useState('')
   const [reps, setReps] = useState('')
@@ -33,6 +35,9 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
   // nobody has touched yet is noise, not help.
   const [touched, setTouched] = useState({ weight: false, reps: false })
   const [saving, setSaving] = useState(false)
+  // Delete asks twice. The editor is also how past sessions are corrected, and a set there
+  // has no swipe or undo to fall back on.
+  const [confirmDelete, setConfirmDelete] = useState(false)
   // Synchronous double-tap guard. `saving` state alone is not enough: React batches, so a
   // second tap in the same tick still sees the old value. The sheet also stays mounted and
   // clickable through Base UI's ~260ms unmount animation, by which point the parent has
@@ -41,11 +46,12 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
 
   useEffect(() => {
     if (!open || !variantId) return
-    setWeight('')
-    setReps('')
-    setRir('')
+    setWeight(editing ? String(display(editing.weight_kg, unit)) : '')
+    setReps(editing ? String(editing.reps) : '')
+    setRir(editing?.rir != null ? String(editing.rir) : '')
     setTouched({ weight: false, reps: false })
     setSaving(false)
+    setConfirmDelete(false)
     savingRef.current = false
     setLast(null)
     setBest(null)
@@ -62,14 +68,17 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
     return () => {
       alive = false
     }
-  }, [open, variantId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset per open, not per render
+  }, [open, variantId, editing?.id])
 
   const weightPh = plan ? display(plan.target_load_kg, unit) : best ? display(best.weight_kg, unit) : 0
   const stepAmt = step(unit)
   // `rir` is nullable in the schema, so the clause is appended only when there is one to
   // show. Interpolating it unconditionally rendered the literal text "@ RIR null" for any
   // set logged without one — the same data ExerciseBlock correctly renders as an em dash.
-  const logRef = historyLoading
+  const logRef = editing
+    ? `Editing set ${editing.set_number} · was ${display(editing.weight_kg, unit)} ${unit} × ${editing.reps}${editing.rir != null ? ` @ RIR ${editing.rir}` : ''}`
+    : historyLoading
     ? 'Loading history…'
     : last
       ? `last ${display(last.weight_kg, unit)} ${unit} × ${last.reps}${last.rir != null ? ` @ RIR ${last.rir}` : ''}`
@@ -78,7 +87,7 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
   // promised the opposite of the guarantee this sheet exists to keep — that nothing is ever
   // entered on the lifter's behalf — and would have read as a bug the first time someone
   // tapped save on what looked like a filled field and got told a weight was missing.
-  const logPlan = plan ? `Coach plan: ${Math.round(weightPh)} ${unit} at RIR 3 — shown below.` : null
+  const logPlan = plan && !editing ? `Coach plan: ${Math.round(weightPh)} ${unit} at RIR 3 — shown below.` : null
 
   const repsPh = best ? best.reps : 0
   const touchReps = () => setTouched((t) => ({ ...t, reps: true }))
@@ -135,7 +144,11 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
     if (savingRef.current || !canSave) return
     savingRef.current = true
     setSaving(true)
-    onSave({ weightKg: toKg(weight, unit), reps: repsNum, rir: rirSel, rpe: rirToRpe(rirSel) })
+    // An untouched weight keeps its stored kg. Round-tripping through the display unit would
+    // nudge it by a rounding step and quietly change a number the lifter never edited.
+    const weightKg =
+      editing && weight === String(display(editing.weight_kg, unit)) ? editing.weight_kg : toKg(weight, unit)
+    onSave({ weightKg, reps: repsNum, rir: rirSel, rpe: rirToRpe(rirSel) })
     onOpenChange(false)
   }
 
@@ -299,9 +312,22 @@ export function SetLoggerSheet({ open, onOpenChange, variantId, variantName, uni
             disabled={!canSave}
             className="flex-[2] rounded-2xl bg-primary py-[14px] text-center text-[14px] font-bold text-primary-foreground disabled:opacity-40"
           >
-            Log set
+            {editing ? 'Save changes' : 'Log set'}
           </button>
         </div>
+
+        {editing && onDelete && (
+          <button
+            onClick={() => {
+              if (!confirmDelete) return setConfirmDelete(true)
+              onDelete()
+              onOpenChange(false)
+            }}
+            className="mt-[10px] w-full rounded-2xl py-[10px] text-center text-[13px] font-semibold text-destructive"
+          >
+            {confirmDelete ? 'Tap again to delete this set' : 'Delete set'}
+          </button>
+        )}
       </div>
     </Sheet>
   )

@@ -159,6 +159,9 @@ export const sets = {
   log: touches([qk.sets], async (row) =>
     supabase.from('workout_sets').insert({ ...row, user_id: await uid() }).select().single().then(ok)),
 
+  update: touches([qk.sets], (id, patch) =>
+    supabase.from('workout_sets').update(patch).eq('id', id).select().single().then(ok)),
+
   remove: touches([qk.sets], (id) => supabase.from('workout_sets').delete().eq('id', id).then(ok)),
 };
 

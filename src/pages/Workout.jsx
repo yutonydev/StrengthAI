@@ -45,6 +45,7 @@ export default function Workout() {
   const [discardOpen, setDiscardOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [logVariantId, setLogVariantId] = useState(null)
+  const [editingSet, setEditingSet] = useState(null)
   const [restEnd, setRestEnd] = useState(null)
   const [restLen, setRestLen] = useState(REST_SECONDS)
   const [restFor, setRestFor] = useState('')
@@ -134,6 +135,9 @@ export default function Workout() {
     return map
   }, [openPlans])
 
+  // One sheet serves both logging a new set and correcting an existing one.
+  const sheetVariantId = editingSet?.variant_id ?? logVariantId
+
   const blocks = useMemo(() => {
     const order = session?.exercise_order || []
     return order.map((vid) => {
@@ -208,6 +212,20 @@ export default function Workout() {
       await setsApi.remove(setId)
     } catch (err) {
       setSessionSets(prevSets)
+      setError(err.message)
+    }
+  }
+
+  // Corrects a logged set in place. No rest timer: nothing new was lifted.
+  const editSet = async (original, { weightKg, reps, rir, rpe }) => {
+    const patch = { weight_kg: weightKg, reps, rir, rpe }
+    setError(null)
+    setSessionSets((list) => list.map((s) => (s.id === original.id ? { ...s, ...patch } : s)))
+    try {
+      const saved = await setsApi.update(original.id, patch)
+      setSessionSets((list) => list.map((s) => (s.id === original.id ? saved : s)))
+    } catch (err) {
+      setSessionSets((list) => list.map((s) => (s.id === original.id ? original : s)))
       setError(err.message)
     }
   }
@@ -398,6 +416,7 @@ export default function Workout() {
             onReorder={(direction) => reorder(i, direction)}
             onRemove={() => removeExercise(block.variantId)}
             onDeleteSet={deleteSet}
+            onEditSet={setEditingSet}
             onLogSet={() => setLogVariantId(block.variantId)}
             onDropPlannedSet={() => dropPlannedSet(block.variantId)}
           />
@@ -468,13 +487,19 @@ export default function Workout() {
       />
 
       <SetLoggerSheet
-        open={!!logVariantId}
-        onOpenChange={(v) => !v && setLogVariantId(null)}
-        variantId={logVariantId}
-        variantName={logVariantId ? canonicalLabel(variantById.get(logVariantId)?.base || '') : ''}
+        open={!!logVariantId || !!editingSet}
+        onOpenChange={(v) => {
+          if (v) return
+          setLogVariantId(null)
+          setEditingSet(null)
+        }}
+        variantId={sheetVariantId}
+        variantName={sheetVariantId ? canonicalLabel(variantById.get(sheetVariantId)?.base || '') : ''}
         unit={unit}
         plan={logVariantId ? planByVariant.get(logVariantId) : null}
-        onSave={(payload) => handleLogSet(logVariantId, payload)}
+        editing={editingSet}
+        onSave={(payload) => (editingSet ? editSet(editingSet, payload) : handleLogSet(logVariantId, payload))}
+        onDelete={editingSet ? () => deleteSet(editingSet.id) : undefined}
       />
 
       <RestTimer restEnd={restEnd} restLen={restLen} restFor={restFor} onExtend={extendRest} onSkip={skipRest} />

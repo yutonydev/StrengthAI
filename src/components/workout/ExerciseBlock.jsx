@@ -10,13 +10,21 @@ const DELETE_AT = -64
 // whose order is also being written to the server.
 const REORDER_AT = 54
 const SPRING = 'cubic-bezier(.34,1.56,.64,1)'
+// Movement under this still counts as a tap, which opens the set for editing.
+const TAP_SLOP = 8
 
-// One logged set, swipeable left to delete. Pointer capture keeps the row receiving moves
-// when the finger leaves its box, and gets `pointercancel` when a scroll takes over.
-function SetRow({ set, unit, onDelete }) {
+// One logged set: tap the numbers to edit, swipe left to delete.
+function SetRow({ set, unit, onDelete, onEdit }) {
   const [x, setX] = useState(0)
   const [swiping, setSwiping] = useState(false)
   const startX = useRef(0)
+  const startY = useRef(0)
+  // Furthest the finger got from where it landed. Decides whether a lift is a tap (edit) or
+  // the tail end of a drag (not an edit), in any direction.
+  const movedRef = useRef(0)
+  const capturedRef = useRef(false)
+  // Optimistic rows have no real id yet; editing one would update a row that doesn't exist.
+  const editable = !String(set.id).startsWith('temp-')
   // Gesture state lives in refs and is only mirrored into state for rendering. State is not
   // readable synchronously: a quick flick delivers pointermove in the same React batch as
   // pointerdown, where `swiping` is still false — so a guard reading state drops the whole
@@ -25,18 +33,29 @@ function SetRow({ set, unit, onDelete }) {
   const xRef = useRef(0)
 
   const down = (e) => {
-    // The explicit trash button is still there for anyone who'd rather tap it. A press
-    // that starts on it must stay a click instead of becoming a zero-distance swipe.
-    if (e.target.closest('button')) return
+    // A press on the trash button must stay a click instead of becoming a zero-distance swipe.
+    if (e.target.closest('[data-no-swipe]')) return
     startX.current = e.clientX
+    startY.current = e.clientY
+    movedRef.current = 0
+    capturedRef.current = false
     activeRef.current = true
     xRef.current = 0
     setSwiping(true)
-    e.currentTarget.setPointerCapture(e.pointerId)
   }
 
   const move = (e) => {
     if (!activeRef.current) return
+    movedRef.current = Math.max(
+      movedRef.current,
+      Math.hypot(e.clientX - startX.current, e.clientY - startY.current)
+    )
+    // Capture only once it is clearly a drag. Capturing on pointerdown retargets the click to
+    // this row, so a plain tap would never reach the edit button inside it.
+    if (!capturedRef.current && movedRef.current >= TAP_SLOP) {
+      capturedRef.current = true
+      e.currentTarget.setPointerCapture(e.pointerId)
+    }
     // Left only. A rightward drag has no meaning here, and letting the row travel right
     // would imply an undo that doesn't exist.
     const next = Math.min(0, e.clientX - startX.current)
@@ -47,11 +66,18 @@ function SetRow({ set, unit, onDelete }) {
   const end = () => {
     if (!activeRef.current) return
     activeRef.current = false
+    capturedRef.current = false
     const travelled = xRef.current
     xRef.current = 0
     setSwiping(false)
     setX(0)
     if (travelled <= DELETE_AT) onDelete()
+  }
+
+  const edit = (e) => {
+    // detail 0 is a keyboard activation, which never follows a drag.
+    if (e.detail !== 0 && movedRef.current >= TAP_SLOP) return
+    onEdit()
   }
 
   return (
@@ -67,6 +93,9 @@ function SetRow({ set, unit, onDelete }) {
         onPointerMove={move}
         onPointerUp={end}
         onPointerCancel={end}
+        // Before capture, a mouse can leave the row and lift elsewhere; end there instead of
+        // leaving the row stuck part-way across.
+        onPointerLeave={() => !capturedRef.current && end()}
         // Losing capture must end the gesture too. Without this a gesture whose element
         // is moved or re-parented mid-drag never sees its pointerup, leaving the handler
         // armed with a stale origin — the next unrelated touch then measures from it.
@@ -78,15 +107,23 @@ function SetRow({ set, unit, onDelete }) {
           transition: swiping ? 'none' : `transform .25s ${SPRING}`,
         }}
       >
-        <div className="text-muted-foreground">{set.set_number}</div>
-        <div>
-          {display(set.weight_kg, unit)}
-          <span className="ml-0.5 font-sans text-[10px] text-muted-foreground">{unit}</span>
-        </div>
-        <div>{set.reps}</div>
-        <div className={set.rir != null && set.rir <= 1 ? 'text-[#F2B544]' : ''}>{set.rir ?? '—'}</div>
-        <div>{set.rpe ?? '—'}</div>
         <button
+          onClick={edit}
+          disabled={!editable}
+          aria-label={`Edit set ${set.set_number}`}
+          className="col-span-5 grid grid-cols-[20px_1fr_46px_42px_42px] items-center gap-[6px] text-left"
+        >
+          <div className="text-muted-foreground">{set.set_number}</div>
+          <div>
+            {display(set.weight_kg, unit)}
+            <span className="ml-0.5 font-sans text-[10px] text-muted-foreground">{unit}</span>
+          </div>
+          <div>{set.reps}</div>
+          <div className={set.rir != null && set.rir <= 1 ? 'text-[#F2B544]' : ''}>{set.rir ?? '—'}</div>
+          <div>{set.rpe ?? '—'}</div>
+        </button>
+        <button
+          data-no-swipe
           onClick={onDelete}
           aria-label={`Delete set ${set.set_number}`}
           className="tap-target text-muted-graphic"
@@ -98,7 +135,7 @@ function SetRow({ set, unit, onDelete }) {
   )
 }
 
-export function ExerciseBlock({ block, index, total, unit, onReorder, onRemove, onDeleteSet, onLogSet, onDropPlannedSet }) {
+export function ExerciseBlock({ block, index, total, unit, onReorder, onRemove, onDeleteSet, onEditSet, onLogSet, onDropPlannedSet }) {
   // Empty prompts the coach planned but the lifter hasn't filled in yet. These are
   // placeholders and nothing else — every number in them is a dash until the lifter types
   // one. A staged set is a plan; only a logged set is a fact.
@@ -216,7 +253,7 @@ export function ExerciseBlock({ block, index, total, unit, onReorder, onRemove, 
             <div />
           </div>
           {block.sets.map((s) => (
-            <SetRow key={s.id} set={s} unit={unit} onDelete={() => onDeleteSet(s.id)} />
+            <SetRow key={s.id} set={s} unit={unit} onDelete={() => onDeleteSet(s.id)} onEdit={() => onEditSet(s)} />
           ))}
 
           {Array.from({ length: pending }, (_, i) => (
