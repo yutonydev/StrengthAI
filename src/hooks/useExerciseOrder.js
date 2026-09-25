@@ -1,11 +1,16 @@
 import { useCallback } from 'react'
 import { sessions, variants as variantsApi } from '@/api/db'
+import { qk, setQueryData } from '@/api/queryCache'
 
 // The exercise-list operations shared by the live workout and the template editor: append a
 // resolved exercise, swap two neighbours, start a session from a plan. Both screens had
 // byte-identical copies. Takes a setter and a persist function rather than owning the row —
 // the two screens genuinely differ in what they hold and in their rollback needs.
-export function useExerciseOrder({ row, setRow, persistOrder, setVariants, onError }) {
+
+// Variants live in the shared cache, so every screen reading them sees a new one at once.
+const setVariants = (update) => setQueryData(qk.variants, update)
+
+export function useExerciseOrder({ row, setRow, persistOrder, onError }) {
   // Append, creating the variant first when the sheet resolved a new one. `variants.ensure`
   // upserts on (user_id, base, mods), so a description landing on existing tags continues
   // that trend line — which is why the resolver's output passes through untouched.
@@ -40,7 +45,7 @@ export function useExerciseOrder({ row, setRow, persistOrder, setVariants, onErr
       setRow((r) => ({ ...r, exercise_order: newOrder }))
       await persistOrder(newOrder)
     },
-    [row, setRow, persistOrder, setVariants]
+    [row, setRow, persistOrder]
   )
 
   /** Swap an exercise with its neighbour, rolling back the optimistic move if the write fails. */

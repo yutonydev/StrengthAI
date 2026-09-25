@@ -194,6 +194,12 @@ export default function CoachChat() {
       // The coach can add exercises the lifter has never logged, so the cached registry is
       // stale the moment it does; without this the new lift renders as an unknown variant.
       if (reply.toolCall?.result?.added?.length) invalidate(qk.variants)
+      // Its tools write on the server, where the cache can't see them. `sessions` covers the
+      // active session and the one being staged into, which the workout screen paints from.
+      if (reply.toolCall?.result?.ok) {
+        if (reply.toolCall.name === 'create_template') invalidate(qk.templates)
+        if (reply.toolCall.name === 'stage_session') invalidate(qk.sessions)
+      }
 
       // Staging exercises is a request to go and train them, so the session is where the
       // lifter wants to be. Delayed just enough to read the reply that explains why.

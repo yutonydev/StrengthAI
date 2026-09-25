@@ -2,6 +2,7 @@
 // later means rewriting one file. Base44 made this mistake in reverse.
 import { createClient } from '@supabase/supabase-js';
 import { clearCache, invalidate, qk } from './queryCache';
+import { newestFirst } from './paginate';
 import { clearLocalState } from '@/lib/localState';
 
 export const supabase = createClient(
@@ -33,6 +34,27 @@ const ok = ({ data, error }) => {
   // never swallow errors silently — that was issue #3 in the backend review
   if (error) throw new Error(error.message);
   return data;
+};
+
+// `ok` for a page read, keeping the row count the paginator needs.
+const okPage = ({ data, error, count }) => {
+  if (error) throw new Error(error.message);
+  return { data, count };
+};
+
+// A user's newest rows from a history table, oldest-first. See paginate.js for why a plain
+// ascending `.limit()` was wrong here. `id` breaks ties so pages never overlap or skip.
+const history = (table, column, extra = (q) => q) => async (limit) => {
+  const id = await uid();
+  return newestFirst(
+    (from, to, withCount) =>
+      extra(supabase.from(table).select('*', withCount ? { count: 'exact' } : undefined).eq('user_id', id))
+        .order(column, { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to)
+        .then(okPage),
+    limit
+  );
 };
 
 /* ------------------------------------------------------------------ auth */
@@ -142,19 +164,15 @@ export const sessions = {
 /* ------------------------------------------------------------------ sets */
 
 export const sets = {
-  /** Every set for the user. Fine at personal scale; see the note at the bottom. */
-  all: async (limit = 5000) =>
-    supabase.from('workout_sets').select('*').eq('user_id', await uid())
-      .order('logged_at', { ascending: true }).limit(limit).then(ok),
+  /** The user's newest 5000 sets, oldest-first. Fine at personal scale; see the note at the bottom. */
+  all: (limit = 5000) => history('workout_sets', 'logged_at')(limit),
 
   forSession: (session_id) =>
     supabase.from('workout_sets').select('*').eq('session_id', session_id)
       .order('logged_at', { ascending: true }).then(ok),
 
-  forVariant: async (variant_id, limit = 500) =>
-    supabase.from('workout_sets').select('*').eq('user_id', await uid())
-      .eq('variant_id', variant_id).order('logged_at', { ascending: true })
-      .limit(limit).then(ok),
+  forVariant: (variant_id, limit = 500) =>
+    history('workout_sets', 'logged_at', (q) => q.eq('variant_id', variant_id))(limit),
 
   log: touches([qk.sets], async (row) =>
     supabase.from('workout_sets').insert({ ...row, user_id: await uid() }).select().single().then(ok)),
@@ -168,9 +186,7 @@ export const sets = {
 /* ------------------------------------------------------------- readiness */
 
 export const readiness = {
-  list: async (limit = 200) =>
-    supabase.from('readiness_entries').select('*').eq('user_id', await uid())
-      .order('created_at', { ascending: true }).limit(limit).then(ok),
+  list: (limit = 200) => history('readiness_entries', 'created_at')(limit),
 
   forSession: (session_id) =>
     supabase.from('readiness_entries').select('*').eq('session_id', session_id).maybeSingle().then(ok),
@@ -232,13 +248,13 @@ export const muscleGoals = {
 export const plans = {
   list: async () =>
     supabase.from('coach_plans').select('*').eq('user_id', await uid()).is('consumed_at', null).then(ok),
-  create: async (row) =>
+  create: touches([qk.plans], async (row) =>
     supabase.from('coach_plans')
       .upsert({ ...row, user_id: await uid() }, { onConflict: 'user_id,variant_id' })
-      .select().single().then(ok),
-  consume: (id) =>
-    supabase.from('coach_plans').update({ consumed_at: new Date().toISOString() }).eq('id', id).then(ok),
-  remove: (id) => supabase.from('coach_plans').delete().eq('id', id).then(ok),
+      .select().single().then(ok)),
+  consume: touches([qk.plans], (id) =>
+    supabase.from('coach_plans').update({ consumed_at: new Date().toISOString() }).eq('id', id).then(ok)),
+  remove: touches([qk.plans], (id) => supabase.from('coach_plans').delete().eq('id', id).then(ok)),
 };
 
 export const recommendations = {

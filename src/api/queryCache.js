@@ -69,10 +69,35 @@ export function fetchQuery(key, fetcher, { force = false } = {}) {
   return request
 }
 
+// Optimistic write: set a key's value now, before the server confirms it. The version bump
+// supersedes any read already in flight, so a response fetched before this change can't land
+// after it and put the old value back. The write's own invalidation then settles the truth.
+export function setQueryData(key, update) {
+  const existing = entries.get(key)
+  // Nothing loaded yet means nothing on screen to update; the read in flight will bring it.
+  if (existing?.data === undefined) return
+  const data = typeof update === 'function' ? update(existing.data) : update
+  versions.set(key, (versions.get(key) ?? 0) + 1)
+  entries.set(key, { ...existing, data })
+  emit(key, data)
+}
+
+// A key plus everything scoped under it: `sets` also covers `sets:session:<id>`. Writes
+// invalidate by table, so a per-session read can never be forgotten by a write that
+// doesn't know which session it touched.
+function withChildren(keys) {
+  const out = new Set()
+  for (const key of keys) {
+    out.add(key)
+    for (const k of entries.keys()) if (k.startsWith(`${key}:`)) out.add(k)
+  }
+  return out
+}
+
 // Mark keys as changed and refetch now. The cached value is kept until the fresh one lands,
 // so a screen showing it updates in place instead of blinking back to a spinner.
 export function invalidate(...keys) {
-  for (const key of keys) {
+  for (const key of withChildren(keys)) {
     const entry = entries.get(key)
     if (!entry?.fetcher) {
       // Never read this session, so there is nothing to refresh and nothing showing it.
@@ -83,6 +108,16 @@ export function invalidate(...keys) {
       // A failed background refresh must not become an unhandled rejection. The screen
       // keeps showing the last good data; its own next mount will surface any real error.
     })
+  }
+}
+
+// Drop keys whose rows no longer exist, so later invalidations stop re-reading a deleted
+// session — each of those reads would fail, quietly, forever.
+export function forget(...keys) {
+  for (const key of keys) {
+    entries.delete(key)
+    inflight.delete(key)
+    versions.set(key, (versions.get(key) ?? 0) + 1)
   }
 }
 
@@ -104,4 +139,8 @@ export const qk = {
   templates: 'templates',
   muscleGoals: 'muscleGoals',
   excludedFlags: 'flags:excluded',
+  plans: 'plans',
+  // Scoped under their table's key, so a write to that table refreshes them too.
+  session: (id) => `sessions:${id}`,
+  sessionSets: (id) => `sets:session:${id}`,
 }

@@ -5,7 +5,7 @@ import { Dumbbell, Play, Plus, Trash2 } from 'lucide-react'
 import { sessions, templates as templatesApi, variants as variantsApi } from '@/api/db'
 import { canonicalLabel } from '@/lib/resolver'
 import { useQuery } from '@/hooks/useQuery'
-import { qk } from '@/api/queryCache'
+import { qk, setQueryData } from '@/api/queryCache'
 import { useVariantMap } from '@/hooks/useVariantMap'
 import { startFromTemplate } from '@/hooks/useExerciseOrder'
 import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
@@ -38,6 +38,8 @@ export default function Templates() {
   const handleNew = async () => {
     try {
       const created = await templatesApi.create({ name: 'New workout', exercise_order: [] })
+      // In the cache before the editor opens, so it paints at once instead of waiting on the re-read.
+      setQueryData(qk.templates, (list) => (list.some((t) => t.id === created.id) ? list : [...list, created]))
       navigate(`/template/${created.id}`)
     } catch (err) {
       setError(err.message)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { ArrowLeft, Check, Sparkles, Trash2 } from 'lucide-react'
@@ -22,6 +22,11 @@ import { useVariantMap } from '@/hooks/useVariantMap'
 import { useExerciseOrder } from '@/hooks/useExerciseOrder'
 import { REST_KEY } from '@/lib/localState'
 import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
+import { useQuery } from '@/hooks/useQuery'
+import { useSeed } from '@/hooks/useSeed'
+import { forget, qk, setQueryData } from '@/api/queryCache'
+
+const EMPTY = Object.freeze([])
 
 const REST_SECONDS = 150
 
@@ -29,18 +34,11 @@ export default function Workout() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
 
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [unit, setUnit] = useState('lb')
+  const [actionError, setError] = useState(null)
   const [session, setSession] = useState(null)
   const [name, setName] = useState('')
   const [notes, setNotes] = useState('')
-  const [variantList, setVariantList] = useState([])
   const [sessionSets, setSessionSets] = useState([])
-  const [sessionHistory, setSessionHistory] = useState([])
-  const [allSets, setAllSets] = useState([])
-  const [templateList, setTemplateList] = useState([])
-  const [openPlans, setOpenPlans] = useState([])
   const [busy, setBusy] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
@@ -68,52 +66,57 @@ export default function Workout() {
     }
   }, [])
 
-  useEffect(() => {
-    let alive = true
-    Promise.all([
-      profileApi.get(),
-      sessions.get(sessionId),
-      variantsApi.list(),
-      setsApi.forSession(sessionId),
-      plansApi.list(),
-      // History for the "Up next" ranking: which lifts follow which, and how long ago each
-      // was last trained. Read-only and only feeds suggestions, so a failure here must not
-      // stop the session loading — hence the catch-to-empty on each.
-      sessions.list().catch(() => []),
-      setsApi.all().catch(() => []),
-      templatesApi.list().catch(() => []),
-    ])
-      .then(([p, s, v, st, openPlanRows, pastSessions, everySet, tpls]) => {
-        if (!alive) return
-        // this screen is for the live session only; a finished one is read-only on /session
-        if (s.status !== 'active') {
-          navigate(`/session/${s.id}`, { replace: true })
-          return
-        }
-        setUnit(p?.unit ?? 'lb')
-        setSession(s)
-        setName(s.name || '')
-        setNotes(s.notes || '')
-        setVariantList(v)
-        setSessionSets(st)
-        setOpenPlans(openPlanRows)
-        setSessionHistory(pastSessions)
-        setAllSets(everySet)
-        setTemplateList(tpls)
+  // Read-only inputs come from the cache, so returning to a workout mid-session is instant.
+  const profileQ = useQuery(qk.profile, () => profileApi.get())
+  const variantsQ = useQuery(qk.variants, () => variantsApi.list())
+  const plansQ = useQuery(qk.plans, () => plansApi.list())
+  // History for the "Up next" ranking only — shown when it arrives, never waited on.
+  const sessionsQ = useQuery(qk.sessions, () => sessions.list())
+  const setsQ = useQuery(qk.sets, () => setsApi.all())
+  const templatesQ = useQuery(qk.templates, () => templatesApi.list())
 
-        // a brand-new session (no sets logged yet) gets a readiness check, once
-        if (st.length === 0) {
-          readinessApi.forSession(sessionId).then((rd) => {
-            if (alive && !rd) setShowReadiness(true)
-          })
-        }
-      })
-      .catch((err) => alive && setError(err.message))
-      .finally(() => alive && setLoading(false))
-    return () => {
-      alive = false
-    }
-  }, [sessionId])
+  const unit = profileQ.data?.unit ?? 'lb'
+  const variantList = variantsQ.data ?? EMPTY
+  const openPlans = plansQ.data ?? EMPTY
+  const sessionHistory = sessionsQ.data ?? EMPTY
+  const allSets = setsQ.data ?? EMPTY
+  const templateList = templatesQ.data ?? EMPTY
+
+  // The session and its sets are edited here — optimistic rows, reorders, renames — so they
+  // are seeded into local state rather than read live.
+  const readinessAsked = useRef(false)
+  const seed = useSeed(
+    [
+      [qk.session(sessionId), () => sessions.get(sessionId)],
+      [qk.sessionSets(sessionId), () => setsApi.forSession(sessionId)],
+    ],
+    ([s, st]) => {
+      // this screen is for the live session only; a finished one is read-only on /session
+      if (s.status !== 'active') {
+        navigate(`/session/${s.id}`, { replace: true })
+        return
+      }
+      setSession(s)
+      setName(s.name || '')
+      setNotes(s.notes || '')
+      setSessionSets(st)
+
+      // a brand-new session (no sets logged yet) gets a readiness check, once
+      if (st.length === 0 && !readinessAsked.current) {
+        readinessAsked.current = true
+        readinessApi
+          .forSession(sessionId)
+          .then((rd) => !rd && setShowReadiness(true))
+          .catch(() => {})
+      }
+    },
+    sessionId
+  )
+
+  const error = actionError || seed.error || profileQ.error || variantsQ.error || plansQ.error
+  // `!session` covers the frame between a finished read and the redirect for a completed one.
+  const loading =
+    seed.loading || profileQ.loading || variantsQ.loading || plansQ.loading || (!session && !error)
 
   const variantById = useVariantMap(variantList)
 
@@ -125,7 +128,6 @@ export default function Workout() {
     row: session,
     setRow: setSession,
     persistOrder,
-    setVariants: setVariantList,
     onError: setError,
   })
 
@@ -333,11 +335,15 @@ export default function Workout() {
     try {
       if (sessionSets.length === 0 && !notes.trim()) {
         await sessions.remove(sessionId)
+        forget(qk.session(sessionId), qk.sessionSets(sessionId))
         localStorage.removeItem(REST_KEY)
         navigate('/', { replace: true })
         return
       }
-      await sessions.finish(sessionId)
+      const finished = await sessions.finish(sessionId)
+      // Written before navigating: the session screen reads this key, and a cached copy still
+      // saying "active" would bounce the lifter straight back here.
+      setQueryData(qk.session(sessionId), finished)
       localStorage.removeItem(REST_KEY)
       // a plan is consumed when the session finishes, not the first logged set —
       // an exercise is three or four sets, and the target shouldn't vanish mid-exercise
@@ -355,6 +361,7 @@ export default function Workout() {
     setBusy(true)
     try {
       await sessions.remove(sessionId)
+      forget(qk.session(sessionId), qk.sessionSets(sessionId))
       localStorage.removeItem(REST_KEY)
       navigate('/', { replace: true })
     } catch (err) {
@@ -366,6 +373,14 @@ export default function Workout() {
 
   if (loading) {
     return <ScreenLoading />
+  }
+  // The session never loaded, so there is nothing to log into — say why instead of crashing.
+  if (!session) {
+    return (
+      <div className="min-h-full bg-background px-[18px] pt-[14px] text-foreground">
+        <ErrorBanner error={error} />
+      </div>
+    )
   }
 
   return (

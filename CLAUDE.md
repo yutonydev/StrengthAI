@@ -14,16 +14,16 @@ description of what exists; this file is the accurate description of how to chan
 ```bash
 npm install
 npm run dev     # http://localhost:5173
-npm test        # vitest — 154 tests, no database or network needed
+npm test        # vitest — 241 tests, no database or network needed
 npm run lint    # oxlint; currently warnings-only, no errors
 npm run build
 ```
 
 Single test file: `npx vitest run src/lib/resolver.test.js`.
 
-Tests live in `src/lib/{resolver,coach,suggestNext}.test.js`,
-`supabase/functions/_shared/{usage,anthropic}.test.ts`, `src/pages/pages.smoke.test.js`,
-`src/index.contrast.test.js` and `src/a11y.test.js`. All are plain function tests — no DB, no mocks, no
+Tests live in `src/lib/{resolver,coach,suggestNext,units}.test.js`,
+`src/api/{queryCache,paginate}.test.js`, `supabase/functions/_shared/{usage,anthropic}.test.ts`,
+`src/pages/pages.smoke.test.js`, `src/index.contrast.test.js` and `src/a11y.test.js`. All are plain function tests — no DB, no mocks, no
 setup. They should pass before any UI work is considered done.
 
 `index.contrast.test.js` parses the palette out of `index.css` and asserts every text token
@@ -80,10 +80,11 @@ src/lib/localState.js     the localStorage keys, and the one place that clears t
 
 src/api/db.js               the ONLY file that touches Supabase
 src/api/queryCache.js       stale-while-revalidate cache; db.js writes invalidate their keys
+src/api/paginate.js         newest-first paged reads for the history tables
 src/api/resolveExercise.js  the three resolution gates
 src/api/coachChat.js        builds the facts payload, calls the chat function
 
-src/hooks/                  useQuery, useVariantMap, useExerciseOrder, useHoldRepeat
+src/hooks/                  useQuery, useSeed, useVariantMap, useExerciseOrder, useHoldRepeat
 src/components/ScreenState.jsx  ScreenLoading + ErrorBanner, used by every screen
 
 supabase/schema.sql            tables, indexes, RLS policies
@@ -92,6 +93,19 @@ supabase/functions/_shared/    vocab.ts, usage.ts (cap logic), http.ts (CORS/JSO
 public/sw.js                   offline shell; registered from main.jsx in production only
 prototype/                     the original high-fidelity UI reference
 ```
+
+**Every screen reads through the query cache.** Read-only data uses `useQuery`. A row the
+screen edits (the live session and its sets, a template, the settings values) uses `useSeed`,
+which fills local state from the cache before first paint and does not push later refreshes
+over an edit in progress. Its `apply` is told `{ fromCache }`: act on "this row is missing"
+only when `fromCache` is false, since a cached list can predate a row created a moment ago. Per-session keys (`qk.session(id)`, `qk.sessionSets(id)`) sit under
+their table's key, so a write that invalidates `sets` refreshes them too. Optimistic edits go
+through `setQueryData`; a deleted session's keys are dropped with `forget`. A write the server
+makes on its own (the coach's tools) must be invalidated by whoever receives the result.
+
+**Auth routes are guarded both ways.** `ProtectedRoute` sends signed-out users to `/login`;
+`GuestRoute` sends signed-in users away from `/login`, `/register` and `/forgot`. `/reset` is
+outside both on purpose: the recovery link signs the user in before that screen renders.
 
 **Routes are lazy.** `App.jsx` eagerly imports Home and Login only; every other screen is a
 `React.lazy` chunk with its Suspense boundary in `AppLayout`. Keep new screens lazy, and add
@@ -179,6 +193,11 @@ something, or explicitly declines to. Patterns to preserve when extending:
   unique index is what actually prevents two racing clients from forking a trend line.
 - `sets.all()` pulls full history and computes trends client-side — correct and fast at
   personal scale. Don't build a `variant_stats` rollup until it actually hurts.
+- History reads (`sets.all`, `sets.forVariant`, `readiness.list`) go through `paginate.js`:
+  newest first, paged, returned oldest-first. **Never `.order(asc).limit(n)` a growing
+  table** — it keeps the oldest rows and silently drops the newest once history outgrows
+  the limit, and Supabase caps every response at its "Max rows" setting (1000 by default)
+  whatever `.limit()` asks for.
 
 ### Database (`supabase/schema.sql` + migrations)
 

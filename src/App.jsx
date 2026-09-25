@@ -1,6 +1,6 @@
 import { lazy } from 'react'
 import { Route, Routes } from 'react-router-dom'
-import { ProtectedRoute } from '@/components/ProtectedRoute'
+import { GuestRoute, ProtectedRoute } from '@/components/ProtectedRoute'
 import { AppLayout, PlainLayout } from '@/components/AppLayout'
 import Home from '@/pages/Home'
 import Login from '@/pages/Login'
@@ -28,9 +28,12 @@ function App() {
   return (
     <Routes>
       <Route element={<PlainLayout />}>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot" element={<ForgotPassword />} />
+        <Route element={<GuestRoute />}>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot" element={<ForgotPassword />} />
+        </Route>
+        {/* Unguarded on purpose: the recovery link arrives here already signed in. */}
         <Route path="/reset" element={<ResetPassword />} />
       </Route>
       <Route element={<ProtectedRoute />}>

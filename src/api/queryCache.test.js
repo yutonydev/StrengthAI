@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getCached, fetchQuery, subscribe, invalidate, clearCache, qk } from './queryCache.js';
+import { getCached, fetchQuery, subscribe, invalidate, clearCache, setQueryData, forget, qk } from './queryCache.js';
 
 const deferred = () => {
   let resolve;
@@ -230,5 +230,103 @@ describe('qk', () => {
   it('spells every key exactly once, so a read and a write cannot disagree', () => {
     const values = Object.values(qk);
     expect(new Set(values).size).toBe(values.length);
+  });
+});
+
+describe('scoped keys', () => {
+  it('scopes per-session reads under their table key', () => {
+    expect(qk.session('abc')).toBe(`${qk.sessions}:abc`);
+    expect(qk.sessionSets('abc').startsWith(`${qk.sets}:`)).toBe(true);
+  });
+
+  it('refreshes every scoped read when its table key is invalidated', async () => {
+    let n = 0;
+    const f = () => Promise.resolve((n += 1));
+    await fetchQuery(qk.sets, f);
+    await fetchQuery(qk.sessionSets('a'), f);
+    await fetchQuery(qk.sessionSets('b'), f);
+
+    invalidate(qk.sets);
+    await flush();
+
+    // 3 initial reads + 3 refreshes: a write that only names `sets` still reaches both sessions.
+    expect(n).toBe(6);
+  });
+
+  it('does not refresh a key that merely shares a prefix without the separator', async () => {
+    let calls = 0;
+    await fetchQuery('setsExtra', () => Promise.resolve((calls += 1)));
+    invalidate('sets');
+    await flush();
+    expect(calls).toBe(1);
+  });
+
+  it('does not refresh the parent when only a child is invalidated', async () => {
+    let parent = 0;
+    await fetchQuery(qk.sessions, () => Promise.resolve((parent += 1)));
+    await fetchQuery(qk.session('x'), () => Promise.resolve('row'));
+    invalidate(qk.session('x'));
+    await flush();
+    expect(parent).toBe(1);
+  });
+});
+
+describe('setQueryData', () => {
+  it('writes and notifies immediately', async () => {
+    await fetchQuery('k', () => Promise.resolve([1, 2]));
+    const seen = [];
+    const off = subscribe('k', (v) => seen.push(v));
+    setQueryData('k', (list) => [...list, 3]);
+    expect(getCached('k').data).toEqual([1, 2, 3]);
+    expect(seen).toEqual([[1, 2, 3]]);
+    off();
+  });
+
+  it('is not undone by a read that was already in flight', async () => {
+    await fetchQuery('k', () => Promise.resolve('before'));
+    const slow = deferred();
+    const inFlight = fetchQuery('k', () => slow.promise, { force: true });
+
+    setQueryData('k', 'optimistic');
+    slow.resolve('before');
+    await inFlight;
+
+    expect(getCached('k').data).toBe('optimistic');
+  });
+
+  it('keeps the remembered fetcher so a later invalidate still refreshes', async () => {
+    let n = 0;
+    await fetchQuery('k', () => Promise.resolve((n += 1)));
+    setQueryData('k', 'optimistic');
+    invalidate('k');
+    await flush();
+    expect(getCached('k').data).toBe(2);
+  });
+
+  it('ignores a key nothing has read', () => {
+    setQueryData('nobody', 'x');
+    expect(getCached('nobody')).toBeUndefined();
+  });
+});
+
+describe('forget', () => {
+  it('stops a parent invalidation from re-reading a deleted child', async () => {
+    let reads = 0;
+    await fetchQuery(qk.sessions, () => Promise.resolve([]));
+    await fetchQuery(qk.session('gone'), () => Promise.resolve((reads += 1)));
+    forget(qk.session('gone'));
+    invalidate(qk.sessions);
+    await flush();
+    expect(reads).toBe(1);
+    expect(getCached(qk.session('gone'))).toBeUndefined();
+  });
+
+  it('discards a read that was in flight when the key was forgotten', async () => {
+    const slow = deferred();
+    const read = fetchQuery('k', () => slow.promise);
+    forget('k');
+    slow.resolve('late');
+    await read;
+    expect(getCached('k')).toBeUndefined();
   });
 });

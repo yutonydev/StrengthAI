@@ -16,53 +16,46 @@ import { Sheet } from '@/components/Sheet'
 import { SetLoggerSheet } from '@/components/workout/SetLoggerSheet'
 import { useVariantMap } from '@/hooks/useVariantMap'
 import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
+import { useQuery } from '@/hooks/useQuery'
+import { forget, invalidate, qk, setQueryData } from '@/api/queryCache'
+
+const EMPTY = Object.freeze([])
 
 export default function SessionDetail() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
 
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [unit, setUnit] = useState('lb')
-  const [session, setSession] = useState(null)
-  const [sessionSets, setSessionSets] = useState([])
-  const [variantList, setVariantList] = useState([])
+  const [actionError, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [excluded, setExcluded] = useState(false)
   const [excludeOpen, setExcludeOpen] = useState(false)
   const [excludeReason, setExcludeReason] = useState('')
   const [excluding, setExcluding] = useState(false)
   const [editingSet, setEditingSet] = useState(null)
 
+  // All cached: reopening a session from Home or the calendar paints on the first frame.
+  const setsKey = qk.sessionSets(sessionId)
+  const profileQ = useQuery(qk.profile, () => profileApi.get())
+  const sessionQ = useQuery(qk.session(sessionId), () => sessions.get(sessionId))
+  const setsQ = useQuery(setsKey, () => setsApi.forSession(sessionId))
+  const variantsQ = useQuery(qk.variants, () => variantsApi.list())
+  const excludedQ = useQuery(qk.excludedFlags, () => flagsApi.byStatus('excluded'))
+
+  const unit = profileQ.data?.unit ?? 'lb'
+  const session = sessionQ.data ?? null
+  const sessionSets = setsQ.data ?? EMPTY
+  const variantList = variantsQ.data ?? EMPTY
+  const excluded = (excludedQ.data ?? EMPTY).some((f) => f.session_id === sessionId)
+
+  const loading =
+    profileQ.loading || sessionQ.loading || setsQ.loading || variantsQ.loading || excludedQ.loading
+  const error =
+    actionError || profileQ.error || sessionQ.error || setsQ.error || variantsQ.error || excludedQ.error
+
+  // the still-in-progress session belongs on /workout
   useEffect(() => {
-    let alive = true
-    Promise.all([
-      profileApi.get(),
-      sessions.get(sessionId),
-      setsApi.forSession(sessionId),
-      variantsApi.list(),
-      flagsApi.byStatus('excluded'),
-    ])
-      .then(([p, s, st, v, excludedFlags]) => {
-        if (!alive) return
-        // the still-in-progress session belongs on /workout
-        if (s.status === 'active') {
-          navigate(`/workout/${s.id}`, { replace: true })
-          return
-        }
-        setUnit(p?.unit ?? 'lb')
-        setSession(s)
-        setSessionSets(st)
-        setVariantList(v)
-        setExcluded(excludedFlags.some((f) => f.session_id === sessionId))
-      })
-      .catch((err) => alive && setError(err.message))
-      .finally(() => alive && setLoading(false))
-    return () => {
-      alive = false
-    }
-  }, [sessionId])
+    if (session?.status === 'active') navigate(`/workout/${session.id}`, { replace: true })
+  }, [session, navigate])
 
   const variantById = useVariantMap(variantList)
 
@@ -111,7 +104,7 @@ export default function SessionDetail() {
   const handleExclude = async () => {
     setExcluding(true)
     try {
-      await flagsApi.create({
+      const flag = await flagsApi.create({
         session_id: sessionId,
         variant_ids: [],
         kind: 'manual_exclusion',
@@ -119,7 +112,7 @@ export default function SessionDetail() {
         is_medical: false,
         exclusion_reason: excludeReason.trim(),
       })
-      setExcluded(true)
+      setQueryData(qk.excludedFlags, (list) => [...list, flag])
       setExcludeOpen(false)
     } catch (err) {
       setError(err.message)
@@ -128,28 +121,28 @@ export default function SessionDetail() {
     }
   }
 
-  // Past sets are corrected in place, then every trend recomputes from the fixed number.
+  // Past sets are corrected in place, then every trend recomputes from the fixed number. The
+  // write refreshes `sets`, and this session's key sits under it, so the server copy follows.
   const editSet = async (original, { weightKg, reps, rir, rpe }) => {
     const patch = { weight_kg: weightKg, reps, rir, rpe }
     setError(null)
-    setSessionSets((list) => list.map((s) => (s.id === original.id ? { ...s, ...patch } : s)))
+    setQueryData(setsKey, (list) => list.map((s) => (s.id === original.id ? { ...s, ...patch } : s)))
     try {
-      const saved = await setsApi.update(original.id, patch)
-      setSessionSets((list) => list.map((s) => (s.id === original.id ? saved : s)))
+      await setsApi.update(original.id, patch)
     } catch (err) {
-      setSessionSets((list) => list.map((s) => (s.id === original.id ? original : s)))
+      setQueryData(setsKey, (list) => list.map((s) => (s.id === original.id ? original : s)))
       setError(err.message)
     }
   }
 
   const deleteSet = async (original) => {
-    const prev = sessionSets
     setError(null)
-    setSessionSets((list) => list.filter((s) => s.id !== original.id))
+    setQueryData(setsKey, (list) => list.filter((s) => s.id !== original.id))
     try {
       await setsApi.remove(original.id)
     } catch (err) {
-      setSessionSets(prev)
+      // The row is still on the server; re-read rather than guess where it went.
+      invalidate(setsKey)
       setError(err.message)
     }
   }
@@ -158,6 +151,7 @@ export default function SessionDetail() {
     setBusy(true)
     try {
       await sessions.remove(sessionId)
+      forget(qk.session(sessionId), setsKey)
       navigate('/', { replace: true })
     } catch (err) {
       setError(err.message)

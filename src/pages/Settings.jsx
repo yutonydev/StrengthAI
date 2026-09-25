@@ -5,6 +5,8 @@ import { auth, muscleGoals, profile as profileApi } from '@/api/db'
 import { PART_LABELS, PART_ORDER } from '@/lib/bodyParts'
 import { useHoldRepeat } from '@/hooks/useHoldRepeat'
 import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
+import { useSeed } from '@/hooks/useSeed'
+import { qk } from '@/api/queryCache'
 
 const UNIT_OPTS = [
   { key: 'kg', label: 'kg', hint: 'Kilograms' },
@@ -20,8 +22,7 @@ const DIET_OPTS = [
 export default function Settings() {
   const navigate = useNavigate()
   const { start, stop } = useHoldRepeat()
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [actionError, setError] = useState(null)
   const [profileRow, setProfileRow] = useState(null)
   const [mgoals, setMgoals] = useState([])
   // per-body-part debounce so a burst of stepper clicks coalesces into one write —
@@ -51,21 +52,19 @@ export default function Settings() {
     }
   }, [])
 
-  useEffect(() => {
-    let alive = true
-    Promise.all([profileApi.get(), muscleGoals.list()])
-      .then(([p, g]) => {
-        if (!alive) return
-        setProfileRow(p)
-        setMgoals(g)
-        goalValues.current = new Map(g.map((row) => [row.body_part, row.weekly_target]))
-      })
-      .catch((err) => alive && setError(err.message))
-      .finally(() => alive && setLoading(false))
-    return () => {
-      alive = false
+  // Home already holds both, so opening Settings from Home paints on the first frame.
+  const { loading, error: loadError } = useSeed(
+    [
+      [qk.profile, () => profileApi.get()],
+      [qk.muscleGoals, () => muscleGoals.list()],
+    ],
+    ([p, g]) => {
+      setProfileRow(p)
+      setMgoals(g)
+      goalValues.current = new Map(g.map((row) => [row.body_part, row.weekly_target]))
     }
-  }, [])
+  )
+  const error = actionError || loadError
 
   const pickUnit = async (unit) => {
     if (unit === profileRow.unit) return

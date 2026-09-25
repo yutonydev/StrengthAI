@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react'
 import {
@@ -13,57 +13,58 @@ import { AddExerciseSheet } from '@/components/workout/AddExerciseSheet'
 import { useVariantMap } from '@/hooks/useVariantMap'
 import { startFromTemplate, useExerciseOrder } from '@/hooks/useExerciseOrder'
 import { ScreenLoading, ErrorBanner } from '@/components/ScreenState'
+import { useQuery } from '@/hooks/useQuery'
+import { useSeed } from '@/hooks/useSeed'
+import { qk } from '@/api/queryCache'
+
+const EMPTY = Object.freeze([])
 
 export default function TemplateEditor() {
   const { templateId } = useParams()
   const navigate = useNavigate()
 
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [actionError, setError] = useState(null)
   const [template, setTemplate] = useState(null)
   const [name, setName] = useState('')
-  const [unit, setUnit] = useState('lb')
-  const [variantList, setVariantList] = useState([])
   const [addOpen, setAddOpen] = useState(false)
-  const [active, setActive] = useState(null)
   const [starting, setStarting] = useState(false)
-  const [templateList, setTemplateList] = useState([])
-  const [sessionHistory, setSessionHistory] = useState([])
-  const [allSets, setAllSets] = useState([])
 
-  useEffect(() => {
-    let alive = true
-    Promise.all([
-      templatesApi.list(),
-      variantsApi.list(),
-      sessions.active(),
-      profileApi.get(),
-      // Suggestions only — never block the editor on them.
-      sessions.list().catch(() => []),
-      setsApi.all().catch(() => []),
-    ])
-      .then(([list, v, act, p, pastSessions, everySet]) => {
-        if (!alive) return
-        const t = list.find((x) => x.id === templateId)
-        if (!t) {
-          navigate('/workouts', { replace: true })
-          return
-        }
-        setTemplate(t)
-        setName(t.name || '')
-        setVariantList(v)
-        setActive(act)
-        setUnit(p?.unit ?? 'lb')
-        setTemplateList(list)
-        setSessionHistory(pastSessions)
-        setAllSets(everySet)
-      })
-      .catch((err) => alive && setError(err.message))
-      .finally(() => alive && setLoading(false))
-    return () => {
-      alive = false
-    }
-  }, [templateId, navigate])
+  // Read-only inputs come straight from the cache, which Templates and Home already fill.
+  const variantsQ = useQuery(qk.variants, () => variantsApi.list())
+  const activeQ = useQuery(qk.activeSession, () => sessions.active())
+  const profileQ = useQuery(qk.profile, () => profileApi.get())
+  const templatesQ = useQuery(qk.templates, () => templatesApi.list())
+  // Suggestions only — shown when they arrive, never waited on.
+  const sessionsQ = useQuery(qk.sessions, () => sessions.list())
+  const setsQ = useQuery(qk.sets, () => setsApi.all())
+
+  // The template itself is edited here, so it is seeded into local state rather than read live.
+  const seed = useSeed(
+    [[qk.templates, () => templatesApi.list()]],
+    ([list], { fromCache }) => {
+      const t = list.find((x) => x.id === templateId)
+      if (!t) {
+        // A cached list can predate this template; only a fresh read proves it is gone.
+        if (!fromCache) navigate('/workouts', { replace: true })
+        return
+      }
+      setTemplate(t)
+      setName(t.name || '')
+    },
+    templateId
+  )
+
+  const variantList = variantsQ.data ?? EMPTY
+  const active = activeQ.data ?? null
+  const unit = profileQ.data?.unit ?? 'lb'
+  const templateList = templatesQ.data ?? EMPTY
+  const sessionHistory = sessionsQ.data ?? EMPTY
+  const allSets = setsQ.data ?? EMPTY
+
+  const error = actionError || seed.error || variantsQ.error || activeQ.error || profileQ.error
+  // `!template` covers the frame between a finished read and the redirect for a missing one.
+  const loading =
+    seed.loading || variantsQ.loading || activeQ.loading || profileQ.loading || (!template && !error)
 
   const variantById = useVariantMap(variantList)
 
@@ -75,7 +76,6 @@ export default function TemplateEditor() {
     row: template,
     setRow: setTemplate,
     persistOrder,
-    setVariants: setVariantList,
     onError: setError,
   })
 
@@ -122,6 +122,14 @@ export default function TemplateEditor() {
 
   if (loading) {
     return <ScreenLoading full />
+  }
+  // The template never loaded, so there is nothing to edit — say why instead of crashing on it.
+  if (!template) {
+    return (
+      <div className="min-h-dvh bg-background px-[18px] pt-[14px] text-foreground">
+        <ErrorBanner error={error} />
+      </div>
+    )
   }
 
   return (
