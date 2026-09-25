@@ -8,6 +8,7 @@ export default function Register() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -16,6 +17,11 @@ export default function Register() {
     e.preventDefault()
     setError(null)
     setMessage(null)
+    // Checked before signUp: a typo here would lock the lifter out of a brand-new account.
+    if (password !== confirm) {
+      setError('Passwords do not match.')
+      return
+    }
     setSubmitting(true)
     try {
       const { session } = await signUp(email, password)
@@ -58,6 +64,15 @@ export default function Register() {
           placeholder: '••••••••',
           value: password,
           onChange: (e) => setPassword(e.target.value),
+          autoComplete: 'new-password',
+        },
+        {
+          name: 'confirm',
+          label: 'Confirm password',
+          type: 'password',
+          placeholder: '••••••••',
+          value: confirm,
+          onChange: (e) => setConfirm(e.target.value),
           autoComplete: 'new-password',
         },
       ]}
