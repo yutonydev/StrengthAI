@@ -1,11 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+import { Analytics } from '@vercel/analytics/react'
 import { AuthProvider } from '@/context/AuthContext'
 import { AppShell } from '@/components/AppShell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import './index.css'
 import App from './App.jsx'
+import { scrubAnalyticsEvent } from '@/lib/analytics'
 
 // Register the offline shell — production only. In dev a service worker intercepts the very
 // module requests HMR depends on, and the hashed /assets/ paths it caches only exist in a
@@ -29,6 +31,7 @@ createRoot(document.getElementById('root')).render(
           </AppShell>
         </AuthProvider>
       </BrowserRouter>
+      <Analytics beforeSend={scrubAnalyticsEvent} />
     </ErrorBoundary>
   </StrictMode>,
 )
